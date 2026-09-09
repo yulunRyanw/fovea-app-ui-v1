@@ -4,3 +4,7 @@ build/
 .gstack/
 *.swp
 Prototypes/.build/
+
+# Saved pages from animations.dev — a paid third-party course, kept locally for
+# reference only. Never redistribute: this repo is public.
+docs/motion/course/
