@@ -22,7 +22,6 @@ enum Snapshots {
         var search: String = ""
         var forceActions: String? = nil
         var variant: String? = nil
-        var theme: ThemeName? = nil
         /// Render the Island in this scenario instead of the window.
         var island: IslandScenario? = nil
         /// Island on a display without a notch.
@@ -43,12 +42,6 @@ enum Snapshots {
         Shot(name: "home-loading", size: wide, demo: "loading,no-flaky,ephemeral"),
         Shot(name: "home-usage-unavailable", size: wide, demo: "usage-unavailable,no-flaky,ephemeral"),
         Shot(name: "home-hover", size: wide, forceActions: "cap-mountain"),
-        Shot(name: "home-theme-citrus", size: wide, theme: .citrus),
-        Shot(name: "home-theme-orchard", size: wide, theme: .orchard),
-        Shot(name: "home-theme-dusk", size: wide, theme: .dusk),
-        Shot(name: "home-theme-canyon", size: wide, theme: .canyon),
-        Shot(name: "home-theme-blush", size: wide, theme: .blush),
-        Shot(name: "home-theme-roast", size: wide, theme: .roast),
         Shot(name: "capture-detail", size: wide, route: "captures/cap-mountain"),
         Shot(name: "capture-detail-code", size: wide, route: "captures/cap-code"),
         Shot(name: "capture-detail-voice", size: wide, route: "captures/cap-error"),
@@ -56,8 +49,6 @@ enum Snapshots {
         Shot(name: "capture-detail-referents", size: wide, route: "captures/cap-desk"),
         Shot(name: "capture-detail-shelf", size: wide, route: "captures/cap-desk", variant: "detail-shelf"),
         Shot(name: "settings-account", size: wide, route: "settings/account"),
-        Shot(name: "settings-account-canyon", size: wide, route: "settings/account", theme: .canyon),
-        Shot(name: "settings-typography", size: wide, route: "settings/typography"),
         Shot(name: "settings-eye-tracking", size: wide, route: "settings/eye-tracking"),
         Shot(name: "settings-voice-capture", size: wide, route: "settings/voice-capture"),
         Shot(name: "settings-dictionary", size: wide, route: "settings/dictionary"),
@@ -97,9 +88,6 @@ enum Snapshots {
             }
             let model = AppModel(options: DemoOptions.parse(["--demo", shot.demo, "--route", shot.route]))
             model.searchQuery = shot.search
-            if let theme = shot.theme {
-                model.settings.update(.theme) { $0.theme = theme }
-            }
             let view = RootView()
                 .environment(model)
                 .environment(\.snapshotMode, true)

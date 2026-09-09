@@ -327,7 +327,6 @@ final class AppModel {
 
     var captures: [Capture] { captureLog.captures }
 
-    var themeName: ThemeName { settings.settings.theme }
     var isSettings: Bool { route.isSettings }
 
     var filteredCaptures: [Capture] { CaptureSearch.filter(captures, query: searchQuery) }

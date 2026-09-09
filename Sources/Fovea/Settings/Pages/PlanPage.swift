@@ -82,7 +82,7 @@ struct PlanPage: View {
             if case .loaded(let u) = model.usage {
                 Circle()
                     .trim(from: 0, to: u.fraction)
-                    .stroke(Tokens.Colors.emphasis, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(Tokens.Colors.ink, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
         }

@@ -50,9 +50,6 @@ struct IslandCommands: Commands {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
-        // Before anything renders — the snapshot run below draws and exits, so
-        // registering later would silently ship system-font screenshots.
-        FontRegistry.registerAll()
         if Snapshots.runIfRequested() {
             NSApp.terminate(nil)
         }

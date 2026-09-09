@@ -1,17 +1,10 @@
 import SwiftUI
 import FoveaCore
 
-private struct ThemeKey: EnvironmentKey { static let defaultValue: Tokens.Theme = Tokens.Colors.theme(.paper) }
 private struct SnapshotModeKey: EnvironmentKey { static let defaultValue = false }
 private struct SnapshotForceActionsKey: EnvironmentKey { static let defaultValue: String? = nil }
 
 extension EnvironmentValues {
-    /// The user's palette, already resolved. Leaf views read the role they need
-    /// (`theme.ink`, `theme.sub`, …) rather than resolving a name themselves.
-    var foveaTheme: Tokens.Theme {
-        get { self[ThemeKey.self] }
-        set { self[ThemeKey.self] = newValue }
-    }
     /// ImageRenderer can't render ScrollView, hover, sheets or popovers; views adapt.
     var snapshotMode: Bool {
         get { self[SnapshotModeKey.self] }

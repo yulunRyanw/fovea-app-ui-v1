@@ -6,6 +6,9 @@ import FoveaCore
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.snapshotMode) private var snapshotMode
+    /// The capture the Island just sent, while the ledger acknowledges it.
+    @State private var recentId: String?
+    @State private var acknowledgeTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
@@ -15,7 +18,7 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     HomeHeader()
                         .padding(.top, Tokens.Layout.titlebarInset - 18)
-                    FeedContent(width: feedWidth)
+                    FeedContent(width: feedWidth, recentId: recentId)
                         .frame(width: feedWidth, alignment: .topLeading)
                         .padding(.top, 46)
                         .padding(.bottom, 56)
@@ -29,6 +32,18 @@ struct HomeView: View {
             if model.feedState == .loading && !snapshotMode {
                 try? await Task.sleep(for: .milliseconds(1400))
                 model.finishLoading()
+            }
+        }
+        // A capture the Island appends lands at the top with the same acknowledgement the
+        // Island's own list gives the task it just created, then settles.
+        .onChange(of: model.captures.count) { old, new in
+            guard new > old, !snapshotMode, let first = model.captures.first else { return }
+            acknowledgeTask?.cancel()
+            recentId = first.id
+            acknowledgeTask = Task {
+                try? await Task.sleep(for: Tokens.Motion.sentGrace)
+                guard !Task.isCancelled else { return }
+                recentId = nil
             }
         }
     }
@@ -68,7 +83,7 @@ struct UsageAvatar: View {
                 if case .loaded(let usage) = model.usage {
                     Circle()
                         .trim(from: 0, to: usage.fraction)
-                        .stroke(Tokens.Colors.emphasis,
+                        .stroke(Tokens.Colors.ink,
                                 style: StrokeStyle(lineWidth: Tokens.Layout.ringWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
@@ -114,12 +129,12 @@ struct AvatarDisk: View {
 
     var body: some View {
         Circle()
-            .fill(emphasized ? Tokens.Colors.emphasis.opacity(0.18) : Tokens.Colors.control)
+            .fill(emphasized ? Tokens.Colors.ink.opacity(0.18) : Tokens.Colors.control)
             .frame(width: size, height: size)
             .overlay(
                 Text(initials.isEmpty ? "?" : initials)
                     .font(.system(size: size * 0.38, weight: .semibold))
-                    .foregroundStyle(Tokens.Colors.emphasis)
+                    .foregroundStyle(Tokens.Colors.ink)
             )
     }
 }
@@ -188,7 +203,7 @@ struct CaptureSearchField: View {
         .background(RoundedRectangle(cornerRadius: Tokens.Radius.field).fill(Tokens.Colors.field))
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.Radius.field)
-                .strokeBorder(focused ? Tokens.Colors.emphasis.opacity(0.5) : .clear, lineWidth: 1.5)
+                .strokeBorder(focused ? Tokens.Colors.ink.opacity(0.5) : .clear, lineWidth: 1.5)
         )
     }
 }
@@ -223,11 +238,12 @@ struct DictionaryButton: View {
     }
 }
 
-// MARK: - Feed
+// MARK: - Ledger
 
 struct FeedContent: View {
     @Environment(AppModel.self) private var model
     let width: CGFloat
+    var recentId: String? = nil
 
     var body: some View {
         switch model.feedState {
@@ -240,9 +256,9 @@ struct FeedContent: View {
             if captures.isEmpty {
                 NoResultsState(query: model.searchQuery) { model.searchQuery = "" }
             } else {
-                VStack(alignment: .leading, spacing: Tokens.Layout.feedGroupGap) {
+                VStack(alignment: .leading, spacing: Tokens.Ledger.groupGap) {
                     ForEach(DateGrouping.groups(captures)) { group in
-                        CaptureDateGroup(group: group, width: width)
+                        CaptureDateGroup(group: group, recentId: recentId)
                     }
                 }
             }
@@ -250,234 +266,33 @@ struct FeedContent: View {
     }
 }
 
+/// One day: a quiet heading, then one row per capture. The heading sits in the row's
+/// own inset so it lines up with the rows' content, not their hover fill.
 struct CaptureDateGroup: View {
     let group: DateGroup
-    let width: CGFloat
+    var recentId: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Space.m) {
             HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.m) {
                 Text(group.title)
                     .font(Tokens.Type_.dateHeading)
-                    .foregroundStyle(Tokens.Colors.textPrimary)
+                    .foregroundStyle(Tokens.Colors.textSecondary)
                 if let subtitle = group.subtitle {
                     Text(subtitle)
                         .font(Tokens.Type_.dateSubtitle)
-                        .foregroundStyle(Tokens.Colors.textSecondary)
+                        .foregroundStyle(Tokens.Colors.textTertiary)
                 }
             }
+            .padding(.horizontal, Tokens.Ledger.rowPaddingH)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
 
-            CaptureGrid(captures: group.captures, width: width)
-        }
-    }
-}
-
-struct CaptureGrid: View {
-    let captures: [Capture]
-    let width: CGFloat
-
-    private var rows: [JustifiedRows.Row] {
-        let items = captures.map { c in
-            JustifiedRows.Item(id: c.id, aspect: c.heroReferent?.aspect ?? fingerprint(c).aspect)
-        }
-        let cap = width >= Tokens.Layout.wideFeedThreshold
-            ? Tokens.Layout.maxItemsPerRowWide : Tokens.Layout.maxItemsPerRowNarrow
-        return JustifiedRows.layout(items, width: width.rounded(),
-                                    targetHeight: Tokens.Layout.feedRowTargetHeight,
-                                    spacing: Tokens.Layout.feedSpacing, maxPerRow: cap,
-                                    fixedPerRow: Tokens.Layout.cardsPerRow)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Layout.feedRowGap) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .top, spacing: Tokens.Layout.feedSpacing) {
-                    ForEach(row.items, id: \.id) { placed in
-                        if let capture = captures.first(where: { $0.id == placed.id }) {
-                            CaptureCell(capture: capture, width: placed.width, mediaHeight: row.height)
-                        }
-                    }
-                    if !row.justified { Spacer(minLength: 0) }
+            VStack(spacing: Tokens.Ledger.rowGap) {
+                ForEach(group.captures) { capture in
+                    CaptureRow(capture: capture, highlighted: capture.id == recentId)
                 }
             }
-        }
-    }
-}
-
-func fingerprint(_ c: Capture) -> SemanticFingerprint {
-    SemanticFingerprint.make(captureId: c.id, anchors: c.semanticAnchors, transcript: c.transcript)
-}
-
-// MARK: - Cell
-
-struct CaptureCell: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.snapshotForceActions) private var forceActions
-    let capture: Capture
-    let width: CGFloat
-    let mediaHeight: CGFloat
-
-    @State private var hovering = false
-    @State private var frame: CGRect = .zero
-    @FocusState private var focused: Bool
-
-    private var showActions: Bool { hovering || focused || forceActions == capture.id }
-    /// Only failed / pending deliveries get a status row; cards carry no time.
-    private var showsStatus: Bool { capture.deliveryStatus == .failed || capture.deliveryStatus == .pending }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if capture.isVisual {
-                media
-                if showsStatus { status }
-            } else {
-                if showsStatus { status }
-                SemanticCaptureItem(capture: capture, width: width, height: mediaHeight)
-            }
-        }
-        .frame(width: width, alignment: .topLeading)
-        .contentShape(Rectangle())
-        // The whole card opens its detail; the Copy pill and Retry sit above and win.
-        .onTapGesture { model.openDetail(capture, from: frame) }
-        .overlay(alignment: .topTrailing) {
-            CaptureActions(capture: capture)
-                .padding(Tokens.Space.xs + 2)
-                .opacity(showActions ? 1 : 0)
-                .allowsHitTesting(showActions)
-                .foveaAnimation(.hover, value: showActions, fadeOnly: true)
-        }
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .focusRing(focused, radius: Tokens.Radius.image)
-        .onHover { hovering = $0 }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(RootView.coordinateSpace)) } action: { frame = $0 }
-        .onKeyPress(.return) { model.openDetail(capture, from: frame); return .handled }
-        .onKeyPress("c") { model.copy(capture); return .handled }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityAction(named: "Details") { model.openDetail(capture, from: frame) }
-        .accessibilityAction(named: "Copy") { model.copy(capture) }
-    }
-
-    private var media: some View {
-        CapturePreview(referent: capture.heroReferent!, width: width, height: mediaHeight)
-    }
-
-    private var status: some View {
-        HStack(spacing: Tokens.Space.s) {
-            if capture.deliveryStatus == .failed {
-                DeliveryFailedBadge(capture: capture)
-            } else {
-                HStack(spacing: Tokens.Space.xs) {
-                    ProgressView().controlSize(.mini)
-                    Text("Sending…")
-                        .font(Tokens.Type_.caption)
-                        .foregroundStyle(Tokens.Colors.textSecondary)
-                }
-            }
-        }
-        .frame(height: Tokens.Layout.feedLabelHeight - 7)
-    }
-
-    private var accessibilityLabel: String {
-        let time = DateGrouping.timeLabel(capture.createdAt)
-        if let ref = capture.heroReferent {
-            return "\(ref.kind.rawValue) capture, \(ref.filename ?? ref.title ?? ""), \(time)"
-        }
-        return "Voice capture: \(capture.semanticAnchors.joined(separator: ", ")), \(time)"
-    }
-}
-
-struct DeliveryFailedBadge: View {
-    @Environment(AppModel.self) private var model
-    let capture: Capture
-
-    var body: some View {
-        Button {
-            model.retryDelivery(capture)
-        } label: {
-            // A filled chip, not colored text: several palettes put a red or orange
-            // in `ink` or `pop`, and a failed capture must never be mistakable for a
-            // highlighted word. The shape carries the meaning, so it survives any hue.
-            HStack(spacing: 3) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Retry")
-                    .font(Tokens.Type_.captionMedium)
-            }
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Tokens.Colors.warning))
-        }
-        .buttonStyle(.plain)
-        .help("Not delivered to \(capture.destinationApp?.name ?? "destination"). Click to send again.")
-        .accessibilityLabel("Not delivered. Retry")
-    }
-}
-
-// MARK: - Actions
-
-/// The one action that lives on the card itself, top-right and small. Details open by
-/// clicking the card.
-struct CaptureActions: View {
-    @Environment(AppModel.self) private var model
-    let capture: Capture
-
-    var body: some View {
-        GlyphButton(symbol: "doc.on.doc", label: "Copy", size: 10, hitSize: 22) { model.copy(capture) }
-            .padding(1)
-            .background(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2).fill(Tokens.Colors.elevated.opacity(0.96)))
-            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2).strokeBorder(Tokens.Colors.hairline, lineWidth: 1))
-            .accessibilityElement(children: .contain)
-    }
-}
-
-// MARK: - Semantic capture
-
-struct SemanticCaptureItem: View {
-    @Environment(\.foveaTheme) private var theme
-    @Environment(AppModel.self) private var model
-    let capture: Capture
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        let fp = fingerprint(capture)
-        // The only place in the app a palette color is used. Two highlights per card
-        // at most; everything else stays black.
-        let pick = SemanticFingerprint.colorPick(captureId: capture.id, count: theme.colors.count)
-        let faces = SemanticFingerprint.fontPick(
-            captureId: capture.id,
-            display: FeedFont.pool(model.settings.settings.feedFonts, role: .display),
-            text: FeedFont.pool(model.settings.settings.feedFonts, role: .text))
-        VStack(alignment: .leading, spacing: fp.lineSpacing) {
-            ForEach(Array(fp.anchors.enumerated()), id: \.offset) { _, anchor in
-                Text(anchor.text)
-                    .font(Tokens.Type_.anchor(size: anchor.size, weight: anchor.weight,
-                                              face: anchor.isPrimary ? faces.display : faces.text))
-                    .tracking(anchor.isPrimary ? -0.4 : -0.1)
-                    .foregroundStyle(color(for: anchor.emphasis, pick: pick))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.leading, anchor.indent)
-            }
-        }
-        .padding(.leading, 4)
-        .frame(width: width, height: height, alignment: .topLeading)
-        .clipped()
-    }
-
-    private func color(for e: SemanticFingerprint.Emphasis, pick: (lead: Int, echo: Int)) -> Color {
-        switch e {
-        case .lead:  return theme[pick.lead]
-        case .echo:  return theme[pick.echo]
-        case .quiet: return Tokens.Colors.anchorInk
         }
     }
 }
@@ -486,30 +301,29 @@ struct SemanticCaptureItem: View {
 
 struct HomeSkeleton: View {
     let width: CGFloat
-    private let aspects: [CGFloat] = [1.4, 1.5, 0.75, 1.5, 1.3, 1.6, 1.2, 1.45]
+    private let titleFractions: [CGFloat] = [0.52, 0.38, 0.61, 0.44, 0.57]
 
     var body: some View {
-        let cap = width >= Tokens.Layout.wideFeedThreshold
-            ? Tokens.Layout.maxItemsPerRowWide : Tokens.Layout.maxItemsPerRowNarrow
-        let items = aspects.enumerated().map { JustifiedRows.Item(id: "s\($0.offset)", aspect: $0.element) }
-        let rows = JustifiedRows.layout(items, width: width, targetHeight: Tokens.Layout.feedRowTargetHeight,
-                                        spacing: Tokens.Layout.feedSpacing, maxPerRow: cap,
-                                        fixedPerRow: Tokens.Layout.cardsPerRow)
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Space.m) {
             RoundedRectangle(cornerRadius: 4).fill(Tokens.Colors.skeleton).frame(width: 120, height: 14)
-            VStack(alignment: .leading, spacing: Tokens.Layout.feedRowGap) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(alignment: .top, spacing: Tokens.Layout.feedSpacing) {
-                        ForEach(row.items, id: \.id) { p in
-                            VStack(alignment: .leading, spacing: 8) {
-                                RoundedRectangle(cornerRadius: Tokens.Radius.image)
-                                    .fill(Tokens.Colors.skeleton)
-                                    .frame(width: p.width, height: row.height)
-                                RoundedRectangle(cornerRadius: 3).fill(Tokens.Colors.skeleton).frame(width: 52, height: 10)
-                            }
+                .padding(.horizontal, Tokens.Ledger.rowPaddingH)
+            VStack(spacing: Tokens.Ledger.rowGap) {
+                ForEach(Array(titleFractions.enumerated()), id: \.offset) { _, fraction in
+                    HStack(spacing: Tokens.Ledger.iconGap) {
+                        RoundedRectangle(cornerRadius: Tokens.Ledger.thumbRadius)
+                            .fill(Tokens.Colors.skeleton)
+                            .frame(width: Tokens.Ledger.thumb.width, height: Tokens.Ledger.thumb.height)
+                            .frame(width: Tokens.Ledger.seenColumnWidth, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 6) {
+                            RoundedRectangle(cornerRadius: 3).fill(Tokens.Colors.skeleton)
+                                .frame(width: width * fraction, height: 11)
+                            RoundedRectangle(cornerRadius: 3).fill(Tokens.Colors.skeleton)
+                                .frame(width: 96, height: 9)
                         }
-                        if !row.justified { Spacer(minLength: 0) }
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, Tokens.Ledger.rowPaddingH)
+                    .frame(height: Tokens.Ledger.rowHeight)
                 }
             }
         }

@@ -156,15 +156,6 @@ public struct Capture: Identifiable, Hashable, Codable, Sendable {
 
 // MARK: - Settings
 
-/// A feed palette: four colors used on the highlighted words and nowhere else.
-/// `paper` is the neutral default; the other six are Color Hunt palettes, used at
-/// their published values (see `Tokens.Colors.theme`).
-public enum ThemeName: String, Codable, CaseIterable, Hashable, Sendable {
-    case paper, citrus, orchard, dusk, canyon, blush, roast
-
-    public var displayName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
-}
-
 public enum VoiceProcessing: String, Codable, CaseIterable, Hashable, Sendable {
     case faithful, polished
     public var displayName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
@@ -173,9 +164,6 @@ public enum VoiceProcessing: String, Codable, CaseIterable, Hashable, Sendable {
 public struct UserSettings: Codable, Hashable, Sendable {
     public var displayName: String
     public var email: String
-    public var theme: ThemeName
-    /// Which faces the feed may set anchor words in. Empty = all of them.
-    public var feedFonts: [FeedFont]
     public var interfaceLanguage: String
     public var launchAtLogin: Bool
     public var showInDock: Bool
@@ -189,8 +177,6 @@ public struct UserSettings: Codable, Hashable, Sendable {
 
     public init(displayName: String = "Yulun Wu",
                 email: String = "wuyulun10@gmail.com",
-                theme: ThemeName = .paper,
-                feedFonts: [FeedFont] = FeedFont.defaultEnabled,
                 interfaceLanguage: String = "en",
                 launchAtLogin: Bool = true,
                 showInDock: Bool = false,
@@ -200,8 +186,7 @@ public struct UserSettings: Codable, Hashable, Sendable {
                 interactionSounds: Bool = true,
                 voiceProcessing: VoiceProcessing = .faithful,
                 eyeTrackingEnabled: Bool = true) {
-        self.displayName = displayName; self.email = email; self.theme = theme
-        self.feedFonts = feedFonts
+        self.displayName = displayName; self.email = email
         self.interfaceLanguage = interfaceLanguage; self.launchAtLogin = launchAtLogin
         self.showInDock = showInDock; self.automaticUpdates = automaticUpdates
         self.screenshotRetentionDays = screenshotRetentionDays; self.microphoneId = microphoneId
@@ -213,16 +198,15 @@ public struct UserSettings: Codable, Hashable, Sendable {
 
     /// Row identity for optimistic save state.
     public enum Key: String, Codable, Hashable, CaseIterable, Sendable {
-        case displayName, email, theme, feedFonts, interfaceLanguage, launchAtLogin, showInDock,
+        case displayName, email, interfaceLanguage, launchAtLogin, showInDock,
              automaticUpdates, screenshotRetentionDays, microphoneId, interactionSounds,
              voiceProcessing, eyeTrackingEnabled
     }
 
-    // `theme` replaced the old `accentColor` key. Blobs written before the palette
-    // change carry `accentColor` with a now-unknown value ("cobalt", "plum", …);
-    // the key is simply absent here, so those settings fall back to `.paper`.
+    // Blobs from the feed era carry `accentColor`, `theme` and `feedFonts`; none is a
+    // key here, so they are ignored and the rest of the settings load as usual.
     enum CodingKeys: String, CodingKey {
-        case displayName, email, theme, feedFonts, interfaceLanguage, launchAtLogin, showInDock,
+        case displayName, email, interfaceLanguage, launchAtLogin, showInDock,
              automaticUpdates, screenshotRetentionDays, microphoneId, interactionSounds,
              voiceProcessing, eyeTrackingEnabled
     }
@@ -233,11 +217,6 @@ public struct UserSettings: Codable, Hashable, Sendable {
         let d = UserSettings.default
         displayName = try c.decodeIfPresent(String.self, forKey: .displayName) ?? d.displayName
         email = try c.decodeIfPresent(String.self, forKey: .email) ?? d.email
-        // `try?` and not `try`: an unrecognized theme name falls back instead of
-        // failing the whole settings decode.
-        theme = ((try? c.decodeIfPresent(ThemeName.self, forKey: .theme)) ?? nil) ?? d.theme
-        // An unknown font id (a face dropped from the app) is skipped, not fatal.
-        feedFonts = ((try? c.decodeIfPresent([FeedFont].self, forKey: .feedFonts)) ?? nil) ?? d.feedFonts
         interfaceLanguage = try c.decodeIfPresent(String.self, forKey: .interfaceLanguage) ?? d.interfaceLanguage
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? d.showInDock
@@ -255,8 +234,6 @@ public struct UserSettings: Codable, Hashable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(displayName, forKey: .displayName)
         try c.encode(email, forKey: .email)
-        try c.encode(theme, forKey: .theme)
-        try c.encode(feedFonts, forKey: .feedFonts)
         try c.encode(interfaceLanguage, forKey: .interfaceLanguage)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(showInDock, forKey: .showInDock)

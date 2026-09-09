@@ -1,13 +1,12 @@
 import Foundation
 
 public enum SettingsCategory: String, CaseIterable, Codable, Hashable, Sendable {
-    case account, typography, eyeTracking = "eye-tracking", voiceCapture = "voice-capture",
+    case account, eyeTracking = "eye-tracking", voiceCapture = "voice-capture",
          dictionary, shortcuts, connectors, plan
 
     public var title: String {
         switch self {
         case .account: return "Account"
-        case .typography: return "Typography"
         case .eyeTracking: return "Eye Tracking"
         case .voiceCapture: return "Voice & Capture"
         case .dictionary: return "Dictionary"
@@ -21,7 +20,6 @@ public enum SettingsCategory: String, CaseIterable, Codable, Hashable, Sendable 
     public var symbol: String {
         switch self {
         case .account: return "person"
-        case .typography: return "textformat"
         case .eyeTracking: return "eye"
         case .voiceCapture: return "waveform"
         case .dictionary: return "character.book.closed"
@@ -33,8 +31,7 @@ public enum SettingsCategory: String, CaseIterable, Codable, Hashable, Sendable 
 
     public var children: [SettingsChild] {
         switch self {
-        case .account: return [.profile, .appearance, .app, .data]
-        case .typography: return [.displayFaces, .textFaces]
+        case .account: return [.profile, .app, .data]
         case .eyeTracking: return [.tracking, .calibration]
         case .voiceCapture: return [.audio, .voiceProcessing]
         case .dictionary: return [.learnedWords]
@@ -62,7 +59,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Hashable, Sendable {
 
     public var categories: [SettingsCategory] {
         switch self {
-        case .personal: return [.account, .typography, .plan]
+        case .personal: return [.account, .plan]
         case .capture: return [.eyeTracking, .voiceCapture, .dictionary, .shortcuts]
         case .integrations: return [.connectors]
         }
@@ -70,8 +67,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Hashable, Sendable {
 }
 
 public enum SettingsChild: String, CaseIterable, Codable, Hashable, Sendable {
-    case profile, appearance, app, data
-    case displayFaces = "display-faces", textFaces = "text-faces"
+    case profile, app, data
     case tracking, calibration
     case audio, voiceProcessing = "voice-processing"
     case learnedWords = "learned-words"
@@ -82,9 +78,6 @@ public enum SettingsChild: String, CaseIterable, Codable, Hashable, Sendable {
     public var title: String {
         switch self {
         case .profile: return "Profile"
-        case .displayFaces: return "Highlighted Words"
-        case .textFaces: return "Everything Else"
-        case .appearance: return "Appearance"
         case .app: return "App"
         case .data: return "Data"
         case .tracking: return "Tracking"
@@ -121,7 +114,7 @@ public struct SettingsRoute: Hashable, Codable, Sendable {
 
     public static let `default` = SettingsCategory.account.defaultRoute
 
-    /// `settings/account/appearance` → route. Category-only paths resolve to the first child.
+    /// `settings/account/app` → route. Category-only paths resolve to the first child.
     public static func parse(_ path: String) -> SettingsRoute? {
         var parts = path.split(separator: "/").map(String.init)
         if parts.first == "settings" { parts.removeFirst() }

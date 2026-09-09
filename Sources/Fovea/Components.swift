@@ -65,7 +65,7 @@ struct QuietButton: View {
     }
 
     private var background: Color {
-        if prominent { return Tokens.Colors.emphasis.opacity(hovering ? 0.9 : 1) }
+        if prominent { return Tokens.Colors.ink.opacity(hovering ? 0.9 : 1) }
         return hovering ? Tokens.Colors.controlHover : Tokens.Colors.control
     }
 }
@@ -236,7 +236,7 @@ struct FocusRing: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(
             RoundedRectangle(cornerRadius: radius)
-                .strokeBorder(Tokens.Colors.emphasis, lineWidth: contrast == .increased ? 2.5 : 2)
+                .strokeBorder(Tokens.Colors.ink, lineWidth: contrast == .increased ? 2.5 : 2)
                 .padding(-3)
                 .opacity(focused ? 1 : 0)
         )

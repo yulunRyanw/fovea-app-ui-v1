@@ -41,7 +41,7 @@ The hard problem is **reference resolution**: connecting the words "this one" / 
 | **Island** | Fovea's surface around the notch (top-center software island on other displays). Its states are phases of `IslandState`. |
 | **Agent task** | One delivered payload an Agent is working on: Working / Needs you / Complete / Failed. Shown in the Island's hover list. |
 | **Chat** | The conversation inside a destination that receives the payload. Fovea predicts it (`ChatRoute`); the user may change it, never must. |
-| **Quick Answer** | A short question-and-answer session with the default Agent, shown in the Island, never in the feed. |
+| **Quick Answer** | A short question-and-answer session with the default Agent, shown in the Island. Past sessions are listed in Home (the PRD places them in the main app), titled by the question. |
 
 No synonyms. Not "clip", "snippet", "item", "selection", "attachment", "context". A referent is a referent (the PRD's "attachment stack" is the referent stack in code).
 
@@ -79,15 +79,15 @@ Three rules that matter more than the folder names:
 
 Current layout: `Sources/FoveaCore` (Core + Store: models, fixtures, pure logic, persistence protocol — no SwiftUI/AppKit; `FoveaCore/Island/` holds the Island state machine, geometry, service protocols and simulated services), `Sources/Fovea/Platform` (notch panel, press-to-toggle hotkeys, AVAudioEngine metering, Speech transcription, screen observer), `Sources/Fovea/Island` (the Island UI), `Sources/Fovea` (UI/Window), `Sources/Fovea/App/AppServices.swift` (composition root shared by both), `Tests/FoveaCoreTests`. The Island reaches the window only through `AppCommandBus`. Propose changes to this layout before scaffolding new layers.
 
-**All colors, type scale, spacing and motion constants live in one tokens file** (`Sources/Fovea/Tokens.swift`). Never hardcode a color or a duration in a view. The six Island *geometry* numbers are the one exception: they live in `IslandLayoutSpec` (Core) so `FoveaCoreTests` can assert the shipped values, and Tokens re-exports them.
+**All colors, type scale, spacing and motion constants live in one tokens file** (`Sources/Fovea/Tokens.swift`). Never hardcode a color or a duration in a view. The window is ink on paper: `Tokens.Colors.ink` (`#0C0C0C`) on `canvas` (`#FBFAF7`), and every window neutral is the ink at an opacity, exactly as every Island neutral is white at an opacity on black. Home rows (`Tokens.Ledger`) copy the Island's Agent list row: same anatomy, same 44×32 thumbnail, same status words. No palettes, no custom faces: SF Pro on both surfaces. The six Island *geometry* numbers are the one exception: they live in `IslandLayoutSpec` (Core) so `FoveaCoreTests` can assert the shipped values, and Tokens re-exports them.
 
 ---
 
 ## Never do these
 
-- No dashboard, landing summary, stat cards, Insights, or monthly reports. Home is a capture feed, not a dashboard.
+- No dashboard, landing summary, stat cards, Insights, or monthly reports. Home is a capture ledger, not a dashboard. No decoration standing in for content: a row shows the referents, the words, the destination and the task state, in one face and one ink.
 - No efficiency metrics — no time saved, words per minute, or streaks. The only usage figures are the plan quota on Usage & Plan and the usage arc on the Home avatar (an arc only, no full track circle) with its hover popover.
-- No window page that renders an agent's output content. Claude Code and Cursor already have agent views; we are a remote control, not a display. (Quick Answer in the Island is the one exception the PRD defines: a short answer, in place, never browsable later.)
+- No window page that renders an agent's output content. Claude Code and Cursor already have agent views; we are a remote control, not a display. (Quick Answer is the one exception the PRD defines: a short answer in the Island, and that question and answer again in the capture's detail card.)
 - The Island never shows a task count, execution steps or logs (one line of current activity per task is fine); never opens an empty hover panel; never shows a provider icon or model name inside Quick Answer; never uses gradients.
 - No stored "learned facts" or inferred user profiles, and no UI for curating them. Captures are logged raw.
 - Do not add a Settings category beyond the seven in the spec (no General, Privacy, Memory, Security, Notifications, Access).

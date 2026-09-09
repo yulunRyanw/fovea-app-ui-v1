@@ -510,7 +510,7 @@ final class IslandModel {
     private static func capture(for draft: ReviewDraft, task: AgentTask) -> Capture {
         Capture(id: task.captureId ?? "cap-\(task.id)", intent: draft.referents.isEmpty ? .voiceOnly : .voiceWithAttachment,
                 createdAt: Date(), transcript: draft.transcript,
-                semanticAnchors: SemanticFingerprint.extractAnchors(from: draft.transcript),
+                semanticAnchors: CaptureAnchors.extract(from: draft.transcript),
                 referents: draft.referents, sourceApp: nil, destinationApp: task.destination,
                 deliveryStatus: .sent, chatName: task.chatName)
     }

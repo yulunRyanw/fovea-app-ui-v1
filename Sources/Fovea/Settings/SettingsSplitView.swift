@@ -123,7 +123,6 @@ struct SettingsDetailPane: View {
                     default:
                         switch model.settingsRoute.category {
                         case .account: AccountPage()
-                        case .typography: TypographyPage()
                         case .eyeTracking: EyeTrackingPage()
                         case .voiceCapture: VoiceCapturePage()
                         case .dictionary: DictionaryPage()

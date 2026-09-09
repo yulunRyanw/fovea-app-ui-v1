@@ -3,7 +3,6 @@ import FoveaCore
 
 struct AccountPage: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.foveaTheme) private var theme
     @State private var confirmSignOut = false
 
     private var settings: SettingsModel { model.settings }
@@ -25,18 +24,6 @@ struct AccountPage: View {
                         set: { v in settings.update(.displayName) { $0.displayName = v } }))
                     GroupDivider()
                     TextRow(label: "Email Address", text: .constant(settings.settings.email), editable: false)
-                }
-            }
-
-            SettingsSection("Appearance", child: .appearance) {
-                SettingsGroup {
-                    SettingsRow(label: "Theme",
-                                detail: settings.settings.theme.displayName,
-                                key: .theme) {
-                        ThemePicker(selection: Binding(
-                            get: { settings.settings.theme },
-                            set: { v in settings.update(.theme) { $0.theme = v } }))
-                    }
                 }
             }
 
@@ -90,67 +77,5 @@ struct AccountPage: View {
             }
             .padding(.top, Tokens.Space.s)
         }
-    }
-}
-
-/// A theme is four word colors, so the swatch shows all four as stacked bands.
-/// A single dot would only ever show a quarter of the choice.
-struct ThemePicker: View {
-    @Binding var selection: ThemeName
-    private let swatch: CGFloat = 44
-
-    var body: some View {
-        HStack(spacing: Tokens.Space.s) {
-            ForEach(ThemeName.allCases, id: \.self) { name in
-                Button { selection = name } label: {
-                    ThemeSwatch(name: name, size: swatch, selected: name == selection)
-                }
-                .buttonStyle(PressableStyle(scale: 0.94))
-                .help(name.displayName)
-                .accessibilityLabel(name.displayName)
-                .accessibilityAddTraits(name == selection ? [.isSelected] : [])
-            }
-        }
-        .padding(.vertical, Tokens.Space.xs)
-    }
-}
-
-private struct ThemeSwatch: View {
-    let name: ThemeName
-    let size: CGFloat
-    let selected: Bool
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    var body: some View {
-        let colors = Tokens.Colors.theme(name).colors
-        let shape = RoundedRectangle(cornerRadius: Tokens.Radius.control)
-        VStack(spacing: 0) {
-            ForEach(Array(colors.enumerated()), id: \.offset) { _, c in
-                c.frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(shape)
-        .overlay(shape.strokeBorder(Tokens.Colors.hairline, lineWidth: 1))
-        .overlay { checkmark(over: colors) }
-        .overlay(ring)
-        .contentShape(shape)
-    }
-
-    @ViewBuilder private func checkmark(over colors: [Color]) -> some View {
-        if selected {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white, Tokens.Colors.emphasis)
-        }
-    }
-
-    private var ring: some View {
-        let stroke: Color = selected
-            ? Tokens.Colors.emphasis
-            : (contrast == .increased ? Tokens.Colors.hairlineStrong : .clear)
-        return RoundedRectangle(cornerRadius: Tokens.Radius.control + 3)
-            .strokeBorder(stroke, lineWidth: 2)
-            .padding(-3)
     }
 }

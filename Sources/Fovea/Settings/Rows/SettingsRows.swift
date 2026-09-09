@@ -404,7 +404,7 @@ struct ShortcutRow: View {
                     .frame(height: Tokens.Layout.controlHeight)
                     .background(RoundedRectangle(cornerRadius: Tokens.Radius.control).fill(Tokens.Colors.field))
                     .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.control)
-                        .strokeBorder(Tokens.Colors.emphasis, lineWidth: 1.5))
+                        .strokeBorder(Tokens.Colors.ink, lineWidth: 1.5))
                     .help("Tap fn, or press a chord · Esc cancels · ⌫ removes the shortcut")
                 } else {
                     Button {

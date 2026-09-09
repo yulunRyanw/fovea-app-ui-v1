@@ -2,7 +2,7 @@
 
 Native macOS prototype (SwiftUI + AppKit, Swift Package, macOS 14+). Two surfaces in one app:
 
-- The **window**: **Home** (capture feed, search, capture detail) and **Settings** (flat sidebar + detail pane).
+- The **window**: **Home** (capture history as a ledger, search, capture detail) and **Settings** (flat sidebar + detail pane). The window is ink on paper (`#0C0C0C` on `#FBFAF7`, every gray the ink at an opacity), the Island is the same system inverted; the two share one row anatomy and one thumbnail geometry.
 - The **Island**: a black surface around the MacBook notch (top-center on other displays). Hover it for the Agent task list; press `fn` to start speaking, press it again to transcribe, review the transcript, pick the Chat, send; press `fn ⌃` (and again to stop) for a Quick Answer that streams under the notch, tears off into a floating panel from its grabber, and docks back when dragged up to the notch, which opens to receive it.
 
 ## Run
@@ -29,7 +29,7 @@ open build/Fovea.app
 ## Try the window
 
 - `⌘,` opens Settings, `⌘[` or the `‹ Home` button returns to Home. The avatar opens Account, `Aa` opens Dictionary.
-- The window is a fixed 980×680; the whole layout is designed at 1180 wide and scaled down. Click a capture (or press `↩` on a focused one) and a frosted detail card zooms out of it over the still-visible feed: transcript or question/answer, tags, destination Chat and time, with the referents stacked in the bar (hover or Tab to fan every one out; hover a thumbnail to see it large). Click anywhere outside or press `Esc` to zoom back. Cards carry no time; hover or Tab-focus one for the small Copy button top-right, or press `C`. Every feed row holds six cards.
+- The window is a fixed 980×680; the whole layout is designed at 1180 wide and scaled down. Home is a ledger grouped by day, one row per capture, with the anatomy of the Island's Agent list row: what you saw on the left (the referent stack, or the app you were speaking in), what you said as the title, where it went and when underneath, and at the right the Agent task's state in the Island's own four words (Working, Needs you, Complete, Failed; a capture that never arrived shows Retry). A capture the Island sends while Home is open lands at the top with the same acknowledgement the Island gives its list. Click a row (or press `↩` on a focused one) and a frosted detail card zooms out of it over the still-visible ledger: transcript or question/answer, tags, destination Chat and time, with the referents stacked in the bar (hover or Tab to fan every one out; hover a thumbnail to see it large). Click anywhere outside or press `Esc` to zoom back. Hover or Tab-focus a row for the small Copy glyph, or press `C`.
 - Search filters live; a query with no matches shows a clear action.
 - Automatic Updates (Account → App) fails its first save on purpose so the row-level Retry state is visible.
 - Shortcuts: click a binding to record, then tap `fn` (with any modifiers held) or press a chord; `Esc` cancels, `⌫` clears; a colliding chord is flagged inline. Every shortcut is press-to-toggle: once to start, again to stop.
@@ -67,11 +67,10 @@ Keyboard focus traversal of buttons follows the macOS "Keyboard navigation" sett
 - `Sources/FoveaCore/Island` — Island state machine (`IslandReducer`), notch geometry, referent stack layout, service protocols and simulated services. Tested in `IslandTests.swift`.
 - `Sources/Fovea/Platform` — `NotchPanel` (non-activating panel above the menu bar), press-to-toggle hotkeys (Carbon chords plus an fn-key event monitor), AVAudioEngine level meter + on-device `SFSpeechRecognizer`, screen observer.
 - `Sources/Fovea/Island` — the Island UI: model, controller, shape, per-state views, detached Quick Answer panel.
-- `Sources/Fovea` — the window UI. `Tokens.swift` holds every color, type size, spacing and motion constant (`Tokens.Island` for the black surface).
-- `Sources/FoveaCore/Resources/Fonts` — the ten feed faces (SIL OFL 1.1, from the Google Fonts
-  repo, each with its `OFL-*.txt` notice), re-fetched by `scripts/fetch-fonts.sh`. Registered at
-  launch by `Sources/Fovea/App/FontRegistry.swift`; which ones the feed may use is a setting
-  (Settings → Typography), and the catalogue itself is `Sources/FoveaCore/FeedFonts.swift`.
+- `Sources/Fovea` — the window UI. `Tokens.swift` holds every color, type size, spacing and motion constant (`Tokens.Ledger` for the Home rows, `Tokens.Island` for the black surface). `Home/CaptureRow.swift` is one ledger row.
+- `Sources/FoveaCore/Resources/Brand` — the logo masters (mark, reversed mark, app icon, dark app icon)
+  and the menu bar marks at 16 and 32 px; `Resources/AppIcon.png` is the 1024 px app icon export, which
+  `scripts/bundle-app.sh` turns into the `.icns`.
 - `Sources/FoveaCore/Resources/Destinations` — provider marks (Claude, Codex, ChatGPT, Cursor, Raycast) fetched by `scripts/fetch-destination-icons.sh` from lobe-icons (MIT) and Raycast's press kit; nominative use only, to be replaced by the official icon package from the PRD checklist.
 - `Tests/FoveaCoreTests` — XCTest against FoveaCore.
 - `scripts/fetch-photos.sh` — re-downloads the demo photos (Lorem Picsum, Unsplash license).

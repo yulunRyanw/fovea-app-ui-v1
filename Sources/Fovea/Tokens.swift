@@ -6,52 +6,53 @@ import FoveaCore
 
 enum Tokens {
 
-    // MARK: - Color
-
-    /// A feed palette: four colors, and they reach exactly one thing — the
-    /// highlighted words on Home. Not the canvas, not the chrome, not a control.
-    /// Everything else in the app stays neutral.
-    struct Theme: Equatable {
-        /// The four source colors, in palette order. Every one gets used: a
-        /// highlighted word takes one of them, picked from the capture's own seed.
-        let hexes: [UInt32]
-        var colors: [Color] { hexes.map(Color.init(hex:)) }
-        subscript(i: Int) -> Color {
-            Color(hex: hexes[((i % hexes.count) + hexes.count) % hexes.count])
-        }
-        init(colors: [UInt32]) { self.hexes = colors }
-    }
+    // MARK: - Color (ink on paper; the Island is the same system inverted)
 
     enum Colors {
-        static let canvas = Color(hex: 0xFFFFFF)
-        static let sidebar = Color(hex: 0xF4F4F5)
+        /// The logo's ink. Every neutral below is this at an opacity, the way the
+        /// Island's neutrals are white at an opacity: one system, two sides.
+        static let ink = Color(hex: 0x0C0C0C)
+
+        /// Three surfaces. The canvas is the logo field lifted halfway to white; pure
+        /// white is reserved for what sits on top (groups, glass, popovers); the logo
+        /// field itself is what sits below (sidebar, keycaps). Surfaces separate by
+        /// tone, so hairlines can stay rare.
+        static let canvas = Color(hex: 0xFBFAF7)
         static let elevated = Color(hex: 0xFFFFFF)
-        /// Grouped setting surface (barely off-white so groups read against the canvas).
         static let group = Color(hex: 0xFFFFFF)
-        static let textPrimary = Color(hex: 0x1B1B1F)
-        static let textSecondary = Color(hex: 0x6B6E76)
-        static let textTertiary = Color(hex: 0x9A9DA5)
+        static let sidebar = Color(hex: 0xF8F6EF)
+        static let keycap = Color(hex: 0xF8F6EF)
+
+        static let textPrimary = ink
+        static let textSecondary = ink.opacity(0.58)
+        static let textTertiary = ink.opacity(0.42)
         /// The `Aa` control and other bare glyph actions.
-        static let glyph = Color(hex: 0x60636B)
-        static let hairline = Color.black.opacity(0.08)
-        static let hairlineStrong = Color.black.opacity(0.12)
-        static let hover = Color.black.opacity(0.04)
-        static let pressed = Color.black.opacity(0.07)
-        /// The current item in the settings sidebar: a neutral pill, never the accent.
-        static let selection = Color.black.opacity(0.08)
+        static let glyph = ink.opacity(0.62)
+        static let hairline = ink.opacity(0.08)
+        static let hairlineStrong = ink.opacity(0.12)
+        static let hover = ink.opacity(0.04)
+        static let pressed = ink.opacity(0.07)
+        /// The current item in the settings sidebar, and the row Home just received.
+        static let selection = ink.opacity(0.08)
         /// Gray-fill controls (quiet buttons, the chosen segment) and their hover step.
-        static let control = Color(hex: 0xF0F0F2)
-        static let controlHover = Color(hex: 0xE6E6E9)
-        static let field = Color(hex: 0xF2F2F4)
-        static let ringTrack = Color(hex: 0xE4E4E7)
-        static let skeleton = Color(hex: 0xEEEEF0)
-        static let scrim = Color.black.opacity(0.42)
+        static let control = ink.opacity(0.05)
+        static let controlHover = ink.opacity(0.08)
+        static let field = ink.opacity(0.05)
+        static let ringTrack = ink.opacity(0.10)
+        static let skeleton = ink.opacity(0.06)
+        static let scrim = ink.opacity(0.42)
+
         static let positive = Color(hex: 0x1F7A3D)
         static let warning = Color(hex: 0xC2410C)
         static let destructive = Color(hex: 0xC53030)
-        static let keycap = Color(hex: 0xF4F4F5)
 
-        // Code / terminal previews
+        /// Agent task state on paper, always beside the word, never color alone. The
+        /// Island's amber and coral are mixed for black; these are the same two roles
+        /// mixed for the canvas (both above 5:1 on it).
+        static let needsYou = Color(hex: 0x8A5A00)
+        static let failed = Color(hex: 0xB93A1A)
+
+        // Code / terminal previews: dark tiles, the same on either surface.
         static let codeSurface = Color(hex: 0x1E2029)
         static let codeText = Color(hex: 0xE4E5EB)
         static let codeKeyword = Color(hex: 0xC792EA)
@@ -60,49 +61,6 @@ enum Tokens {
         static let codeMuted = Color(hex: 0x8A8FA3)
         static let codeSuccess = Color(hex: 0x4ADE80)
         static let chartLine = Color(hex: 0x2F6BFF)
-
-        /// The word every un-highlighted anchor is set in. A warm near-black:
-        /// #000000 reads synthetic at this size, and a cool grey fights the palettes.
-        static let anchorInk = Color(hex: 0x1A120B)
-
-        /// Neutral emphasis for chrome that used to take the accent — prominent
-        /// buttons, focus rings, the usage arc. Deliberately not a palette color:
-        /// the palette belongs to the words.
-        static let emphasis = Color(hex: 0x1F1A15)
-
-        /// The four palette members, exactly as published on Color Hunt — no
-        /// darkening, no substitutions. Several members are pale enough that a word
-        /// set in them is very low contrast on white (Citrus `#FFF1D1` is 1.1:1,
-        /// Blush is all pastel); that is the intended trade for palette fidelity.
-        /// `Tokens.Colors.contrastOnCanvas` reports the real ratios.
-        static func theme(_ t: ThemeName) -> Theme {
-            switch t {
-            case .paper:   return Theme(colors: [c(0x1A120B), c(0x4A342A), c(0x7A6152), c(0xA38B78)])
-            case .citrus:  return Theme(colors: [c(0xDF301C), c(0xFF9100), c(0xFFF1D1), c(0x00B7CD)])
-            case .orchard: return Theme(colors: [c(0x2A7C13), c(0x76C457), c(0xFFF8CF), c(0xFBE6C2)])
-            case .dusk:    return Theme(colors: [c(0xFDF4D2), c(0xB0CDE6), c(0xA290B7), c(0x946D6D)])
-            case .canyon:  return Theme(colors: [c(0x0F3040), c(0x464858), c(0xA56F63), c(0xD99B7F)])
-            case .blush:   return Theme(colors: [c(0xFFB6B9), c(0xFAE3D9), c(0xBBDED6), c(0x61C0BF)])
-            case .roast:   return Theme(colors: [c(0x1A120B), c(0x3C2A21), c(0xD5CEA3), c(0xE5E5CB)])
-            }
-        }
-
-        /// Contrast of each member against the white feed canvas, for the settings
-        /// page to show honestly rather than the app pretending they all work.
-        static func contrastOnCanvas(_ t: ThemeName) -> [Double] {
-            theme(t).hexes.map { hex in
-                func chan(_ v: UInt32) -> Double {
-                    let c = Double(v) / 255
-                    return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
-                }
-                let l = 0.2126 * chan((hex >> 16) & 0xFF)
-                      + 0.7152 * chan((hex >> 8) & 0xFF)
-                      + 0.0722 * chan(hex & 0xFF)
-                return (1.05) / (l + 0.05)
-            }
-        }
-
-        private static func c(_ hex: UInt32) -> UInt32 { hex }
     }
 
     // MARK: - Type (system font, SF Pro on macOS)
@@ -131,23 +89,6 @@ enum Tokens {
         static let monoDetail = Font.system(size: 14, design: .monospaced)
         static let equation = Font.system(size: 20, weight: .regular, design: .serif)
         static let transcript = Font.system(size: 20, weight: .regular)
-
-        /// Anchor words. The single funnel for feed type — everything about which
-        /// face a word gets is decided here.
-        ///
-        /// `face` nil, or a face that failed to register, falls back to the system
-        /// font rather than silently rendering the wrong family. Single-weight faces
-        /// never get asked for medium or semibold: Core Text would synthesise the
-        /// bold and smear the outlines, so their emphasis comes from size alone
-        /// (the caller already sizes leads at 22–27 pt against 15–19 pt quiet words).
-        static func anchor(size: CGFloat, weight: Int, face: FeedFont? = nil) -> Font {
-            let w: Font.Weight = weight >= 2 ? .semibold : (weight == 1 ? .medium : .regular)
-            guard let face, FontRegistry.isAvailable(face) else {
-                return .system(size: size, weight: w)
-            }
-            let custom = Font.custom(face.family, size: size)
-            return face.isSingleWeight ? custom : custom.weight(w)
-        }
     }
 
     // MARK: - Spacing
@@ -185,19 +126,9 @@ enum Tokens {
         static let uiScale: CGFloat = 980.0 / 1180.0
         /// Room for the traffic lights under the hidden title bar.
         static let titlebarInset: CGFloat = 52
+        /// The Home column: the ledger and its date headings.
         static let feedMaxWidth: CGFloat = 940
         static let feedHorizontalPadding: CGFloat = 36
-        static let feedRowTargetHeight: CGFloat = 130
-        static let feedSpacing: CGFloat = 22
-        static let feedRowGap: CGFloat = 26
-        static let feedGroupGap: CGFloat = 36
-        static let feedLabelHeight: CGFloat = 22
-        /// Feed widths at or above this use the wide cap.
-        static let wideFeedThreshold: CGFloat = 920
-        static let maxItemsPerRowWide = 6
-        static let maxItemsPerRowNarrow = 4
-        /// Every feed row holds this many cards.
-        static let cardsPerRow = 6
         static let headerSearchMaxWidth: CGFloat = 540
         static let headerSearchHeight: CGFloat = 36
         static let avatarSize: CGFloat = 30
@@ -215,6 +146,40 @@ enum Tokens {
         static let rowPaddingV: CGFloat = 13
         /// Buttons, menus, fields and segments inside a row.
         static let controlHeight: CGFloat = 30
+    }
+
+    // MARK: - Ledger (Home rows: the Island's Agent list row, on paper)
+
+    enum Ledger {
+        /// The Island list row is 46 pt around 13.5/11.5 pt type; the ledger's 14/12.5 pt
+        /// pair beside a 32 pt thumbnail wants a little more.
+        static let rowHeight: CGFloat = 52
+        static let rowPaddingH: CGFloat = 12
+        static let iconGap: CGFloat = 12
+        static let rowRadius: CGFloat = 7
+        static let rowGap: CGFloat = 1
+        static let groupGap: CGFloat = 28
+        /// The Island's referent thumbnail, exactly (`Tokens.Island.Layout.thumb`).
+        static let thumb = CGSize(width: 44, height: 32)
+        static let thumbRadius: CGFloat = 6
+        static let stackLayerOffset: CGFloat = 7
+        static let stackMaxLayers = 3
+        static let stackSpacing: CGFloat = 6
+        static let statusDot: CGFloat = 5
+        static let markSize: CGFloat = 12
+        static let intent = Font.system(size: 14, weight: .regular)
+        static let meta = Font.system(size: 12.5, weight: .regular)
+        static let status = Font.system(size: 12.5, weight: .medium)
+
+        static var stackConfig: ReferentStackLayout.Config {
+            ReferentStackLayout.Config(thumb: thumb, spacing: stackSpacing, layerOffset: stackLayerOffset,
+                                       maxLayers: stackMaxLayers)
+        }
+        /// The "what you saw" column is as wide as a full three-layer stack, so titles
+        /// align whether a row shows referents or the source app.
+        static var seenColumnWidth: CGFloat {
+            ReferentStackLayout.collapsedWidth(count: stackMaxLayers, config: stackConfig)
+        }
     }
 
     // MARK: - Motion
@@ -362,16 +327,16 @@ enum Tokens {
             /// Reduce Transparency and offscreen renders: opaque surface, spec fallback.
             static let surfaceOpaque = Color.white.opacity(0.94)
             static let border = Color.white.opacity(0.58)
-            static let borderFallback = Color(hex: 0x0F172A).opacity(0.08)
+            static let borderFallback = Color(hex: 0x0C0C0C).opacity(0.08)
             static let innerHighlight = Color.white.opacity(0.72)
-            static let shadowPrimary = Color(hex: 0x0F172A).opacity(0.14)
-            static let shadowContact = Color(hex: 0x0F172A).opacity(0.08)
-            static let foreground = Color(hex: 0x0F172A).opacity(0.92)
-            static let muted = Color(hex: 0x0F172A).opacity(0.55)
-            static let divider = Color(hex: 0x0F172A).opacity(0.08)
+            static let shadowPrimary = Color(hex: 0x0C0C0C).opacity(0.14)
+            static let shadowContact = Color(hex: 0x0C0C0C).opacity(0.08)
+            static let foreground = Color(hex: 0x0C0C0C).opacity(0.92)
+            static let muted = Color(hex: 0x0C0C0C).opacity(0.55)
+            static let divider = Color(hex: 0x0C0C0C).opacity(0.08)
             /// Metadata bar sits on the same glass with a faint lift.
             static let barLift = Color.white.opacity(0.16)
-            static let tagFill = Color(hex: 0x0F172A).opacity(0.05)
+            static let tagFill = Color(hex: 0x0C0C0C).opacity(0.05)
             static let thumbRim = Color.white
             static let thumbShadow = Color.black.opacity(0.14)
             static let shelfSurface = Color.white

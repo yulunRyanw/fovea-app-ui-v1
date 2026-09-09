@@ -14,7 +14,6 @@ struct RootView: View {
         // Every screen is laid out on the design canvas and scaled into the fixed window,
         // so all proportions survive the smaller size.
         let canvas = Tokens.Layout.designCanvas
-        let theme = Tokens.Colors.theme(model.themeName)
         let detailOpen = model.openCaptureId != nil
         ZStack {
             // Home stays mounted so its scroll position and search query survive Settings.
@@ -47,8 +46,7 @@ struct RootView: View {
         .frame(width: Tokens.Layout.window.width, height: Tokens.Layout.window.height, alignment: .topLeading)
         .clipped()
         .background(Tokens.Colors.canvas)
-        .environment(\.foveaTheme, theme)
-        .tint(Tokens.Colors.emphasis)
+        .tint(Tokens.Colors.ink)
         .background(WindowAccessor { window in
             window.isMovableByWindowBackground = true
             window.titlebarAppearsTransparent = true

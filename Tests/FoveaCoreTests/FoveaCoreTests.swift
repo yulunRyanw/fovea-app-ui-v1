@@ -2,122 +2,20 @@ import XCTest
 import ImageIO
 @testable import FoveaCore
 
-final class SemanticFingerprintTests: XCTestCase {
-    func testSameIdSameComposition() {
-        let a = SemanticFingerprint.make(captureId: "cap-navbar", anchors: ["navbar", "padding", "hover state"])
-        let b = SemanticFingerprint.make(captureId: "cap-navbar", anchors: ["navbar", "padding", "hover state"])
-        XCTAssertEqual(a, b)
+final class CaptureAnchorsTests: XCTestCase {
+    func testExtractsProperNounsIdentifiersAndLongWords() {
+        XCTAssertEqual(CaptureAnchors.extract(from: "Make the Prisma schema match users.py please"),
+                       ["Prisma", "schema", "match", "users.py"])
     }
 
-    func testDifferentIdsVary() {
-        let ids = ["cap-navbar", "cap-prisma", "cap-rewrite", "cap-error", "cap-update", "cap-meeting"]
-        let comps = ids.map { SemanticFingerprint.make(captureId: $0, anchors: ["one", "two", "three"]) }
-        XCTAssertGreaterThan(Set(comps).count, 1)
+    func testStopsAtFiveAndSkipsStopWords() {
+        let anchors = CaptureAnchors.extract(from: "Please compare these designs against the Linear roadmap, then update tokens.swift and Figma")
+        XCTAssertEqual(anchors.count, 5)
+        XCTAssertFalse(anchors.contains("these"))
     }
 
-    /// The emphasis rule is now positional-free, so assert the invariants that must
-    /// hold for every composition rather than "index 0 is the loud one".
-    func testEmphasisInvariants() {
-        let ids = ["cap-error", "cap-navbar", "cap-prisma", "cap-rewrite", "cap-update",
-                   "cap-meeting", "cap-toast", "cap-script", "cap-tokens", "cap-standup"]
-        for id in ids {
-            for words in [["error"],
-                          ["error", "nil check"],
-                          ["error", "nil check", "function"],
-                          ["error", "nil check", "function", "cast"],
-                          ["error", "nil check", "function", "cast", "retry"]] {
-                let f = SemanticFingerprint.make(captureId: id, anchors: words)
-                let primaries = f.anchors.filter(\.isPrimary)
-                let quiet = f.anchors.filter { !$0.isPrimary }
-
-                XCTAssertEqual(f.anchors.filter { $0.emphasis == .lead }.count, 1, "\(id) \(words.count)")
-                XCTAssertTrue((1...2).contains(primaries.count), "\(id) \(words.count)")
-                // A second highlight only on cards with room for it.
-                if words.count < 4 { XCTAssertEqual(primaries.count, 1, "\(id) \(words.count)") }
-
-                for a in f.anchors {
-                    XCTAssertGreaterThanOrEqual(a.size, SemanticFingerprint.minSize)
-                    XCTAssertLessThanOrEqual(a.size, SemanticFingerprint.maxSize)
-                }
-                for p in primaries { XCTAssertGreaterThanOrEqual(p.size, 22, "\(id) \(words.count)") }
-                // Every quiet word stays smaller than every highlight.
-                for q in quiet {
-                    XCTAssertLessThanOrEqual(q.size, 19, "\(id) \(words.count)")
-                    for p in primaries { XCTAssertLessThan(q.size, p.size, "\(id) \(words.count)") }
-                }
-                // The two highlights never sit adjacent.
-                if primaries.count == 2 {
-                    let idx = f.anchors.enumerated().filter { $0.element.isPrimary }.map(\.offset)
-                    XCTAssertGreaterThanOrEqual(abs(idx[0] - idx[1]), 2, "\(id) \(words.count)")
-                }
-                XCTAssertTrue((1.05...1.36).contains(f.aspect))
-            }
-        }
-    }
-
-    /// The lead is drawn from the first three words, so across many ids it must
-    /// actually land somewhere other than index 0 — otherwise the rule is inert.
-    func testLeadIsNotAlwaysTheFirstWord() {
-        let leads = (0..<80).map { i -> Int in
-            let f = SemanticFingerprint.make(captureId: "cap-\(i)", anchors: ["one", "two", "three", "four"])
-            return f.anchors.firstIndex { $0.emphasis == .lead } ?? -1
-        }
-        XCTAssertGreaterThan(Set(leads).count, 1, "the lead never moves off its default position")
-        XCTAssertTrue(leads.allSatisfy { (0...2).contains($0) }, "lead escaped the first three words")
-    }
-
-    func testFallsBackToTranscriptAnchors() {
-        let f = SemanticFingerprint.make(captureId: "x", anchors: [], transcript: "Make the Prisma schema match users.py please")
-        XCTAssertEqual(f.anchors.map(\.text), ["Prisma", "schema", "match", "users.py"])
-    }
-}
-
-final class JustifiedRowsTests: XCTestCase {
-    let items = Fixtures.captures().map { c in
-        JustifiedRows.Item(id: c.id, aspect: c.heroReferent?.aspect
-                           ?? SemanticFingerprint.make(captureId: c.id, anchors: c.semanticAnchors).aspect)
-    }
-
-    func testRowsFillWidthAndRespectCap() {
-        for (width, cap) in [(CGFloat(940), 4), (CGFloat(760), 3)] {
-            let rows = JustifiedRows.layout(items, width: width, targetHeight: 150, spacing: 20, maxPerRow: cap)
-            XCTAssertFalse(rows.isEmpty)
-            for row in rows {
-                XCTAssertLessThanOrEqual(row.items.count, cap)
-                let total = row.items.reduce(CGFloat(0)) { $0 + $1.width } + CGFloat(row.items.count - 1) * 20
-                if row.justified { XCTAssertEqual(total, width, accuracy: 1) }
-                else { XCTAssertLessThanOrEqual(total, width + 1) }
-            }
-        }
-    }
-
-    func testPreservesOrder() {
-        let rows = JustifiedRows.layout(items, width: 940, targetHeight: 150, spacing: 20, maxPerRow: 4)
-        XCTAssertEqual(rows.flatMap { $0.items.map(\.id) }, items.map(\.id))
-    }
-
-    func testFixedPerRow() {
-        for n in 2...6 {
-            let rows = JustifiedRows.layout(items, width: 940, targetHeight: 130, spacing: 22, maxPerRow: 5, fixedPerRow: n)
-            XCTAssertEqual(rows.count, Int((Double(items.count) / Double(n)).rounded(.up)))
-            for (i, row) in rows.enumerated() {
-                let total = row.items.reduce(CGFloat(0)) { $0 + $1.width } + CGFloat(row.items.count - 1) * 22
-                if i < rows.count - 1 || items.count % n == 0 {
-                    XCTAssertEqual(row.items.count, n)
-                    XCTAssertTrue(row.justified)
-                    XCTAssertEqual(total, 940, accuracy: 1)
-                } else {
-                    XCTAssertEqual(row.items.count, items.count % n)
-                    XCTAssertLessThanOrEqual(total, 941)
-                }
-            }
-            XCTAssertEqual(rows.flatMap { $0.items.map(\.id) }, items.map(\.id))
-        }
-    }
-
-    func testEmptyAndZeroWidth() {
-        XCTAssertTrue(JustifiedRows.layout([], width: 900, targetHeight: 150, spacing: 20, maxPerRow: 4).isEmpty)
-        XCTAssertTrue(JustifiedRows.layout(items, width: 0, targetHeight: 150, spacing: 20, maxPerRow: 4).isEmpty)
+    func testEmptyTranscript() {
+        XCTAssertEqual(CaptureAnchors.extract(from: ""), [])
     }
 }
 
@@ -198,33 +96,26 @@ final class StoreTests: XCTestCase {
         let store = UserDefaultsStore<UserSettings>(defaults: defaults, key: "settings")
         XCTAssertNil(store.load())
         var s = UserSettings.default
-        s.theme = .canyon
+        s.interfaceLanguage = "ja"
         s.screenshotRetentionDays = nil
-        try await store.save(s, changed: "theme")
+        try await store.save(s, changed: "interfaceLanguage")
         XCTAssertEqual(store.load(), s)
     }
 
     func testDecodesMissingKeysWithDefaults() throws {
-        let data = #"{"theme":"roast"}"#.data(using: .utf8)!
+        let data = #"{"interfaceLanguage":"de"}"#.data(using: .utf8)!
         let s = try JSONDecoder().decode(UserSettings.self, from: data)
-        XCTAssertEqual(s.theme, .roast)
+        XCTAssertEqual(s.interfaceLanguage, "de")
         XCTAssertEqual(s.launchAtLogin, UserSettings.default.launchAtLogin)
     }
 
-    /// Settings written before the palette change carry `accentColor` with a value
-    /// no theme answers to. That blob must still load, not throw.
-    func testLegacyAccentColorBlobFallsBackToDefaultTheme() throws {
-        let data = #"{"accentColor":"cobalt","launchAtLogin":false}"#.data(using: .utf8)!
+    /// Settings written in the feed era carry `accentColor`, `theme` and `feedFonts`.
+    /// Those blobs must still load, with the unknown keys ignored, not throw.
+    func testFeedEraBlobStillLoads() throws {
+        let data = #"{"accentColor":"cobalt","theme":"roast","feedFonts":["fraunces"],"launchAtLogin":false}"#.data(using: .utf8)!
         let s = try JSONDecoder().decode(UserSettings.self, from: data)
-        XCTAssertEqual(s.theme, .paper)
         XCTAssertFalse(s.launchAtLogin)
-    }
-
-    /// And a present-but-unrecognized theme name must not take the decode down either.
-    func testUnknownThemeNameFallsBack() throws {
-        let data = #"{"theme":"chartreuse"}"#.data(using: .utf8)!
-        let s = try JSONDecoder().decode(UserSettings.self, from: data)
-        XCTAssertEqual(s.theme, .paper)
+        XCTAssertEqual(s.interfaceLanguage, UserSettings.default.interfaceLanguage)
     }
 
     func testFlakyStoreFailsOnceThenSucceeds() async throws {
@@ -243,7 +134,7 @@ final class StoreTests: XCTestCase {
 final class RouteTests: XCTestCase {
     func testSettingsRouteParsing() {
         XCTAssertEqual(SettingsRoute.parse("settings/dictionary"), SettingsRoute(.learnedWords))
-        XCTAssertEqual(SettingsRoute.parse("settings/account/appearance"), SettingsRoute(.appearance))
+        XCTAssertEqual(SettingsRoute.parse("settings/account/app"), SettingsRoute(.app))
         XCTAssertEqual(SettingsRoute.parse("plan/billing"), SettingsRoute(.billing))
         XCTAssertNil(SettingsRoute.parse("settings/general"))
         XCTAssertEqual(AppRoute.parse("settings/connectors/cursor"), .connectorDetail("cursor"))
@@ -252,12 +143,12 @@ final class RouteTests: XCTestCase {
     }
 
     func testNavigationIsExact() {
+        // The seven categories in the spec, and no eighth.
         XCTAssertEqual(SettingsCategory.allCases.map(\.title),
-                       ["Account", "Typography", "Eye Tracking", "Voice & Capture", "Dictionary",
+                       ["Account", "Eye Tracking", "Voice & Capture", "Dictionary",
                         "Shortcuts", "Connectors", "Usage & Plan"])
         XCTAssertEqual(SettingsCategory.plan.children.map(\.title), ["Usage", "Plan", "Billing"])
-        XCTAssertEqual(SettingsCategory.typography.children.map(\.title),
-                       ["Highlighted Words", "Everything Else"])
+        XCTAssertEqual(SettingsCategory.account.children.map(\.title), ["Profile", "App", "Data"])
     }
 
     func testSidebarGroupsCoverEveryCategoryOnce() {
@@ -333,74 +224,5 @@ final class RelativeTimeTests: XCTestCase {
         XCTAssertEqual(RelativeTime.activity(from: now.addingTimeInterval(-30), to: now, calendar: cal), "Active just now")
         XCTAssertEqual(RelativeTime.activity(from: now.addingTimeInterval(-27 * 3600), to: now, calendar: cal), "yesterday")
         XCTAssertEqual(RelativeTime.activity(from: now.addingTimeInterval(-3 * 86_400), to: now, calendar: cal), "Sep 5")
-    }
-}
-
-final class FeedFontTests: XCTestCase {
-    func testEveryFontHasADistinctFileAndFamily() {
-        XCTAssertEqual(Set(FeedFont.allCases.map(\.file)).count, FeedFont.allCases.count)
-        XCTAssertEqual(Set(FeedFont.allCases.map(\.family)).count, FeedFont.allCases.count)
-    }
-
-    /// Every declared file has to actually be in the resource bundle, or the app
-    /// silently renders the system font everywhere.
-    func testEveryFontFileIsBundled() {
-        for font in FeedFont.allCases {
-            XCTAssertNotNil(FoveaResources.url("Fonts/\(font.file)"),
-                            "missing bundled font file for \(font.displayName): \(font.file)")
-        }
-    }
-
-    func testLicenceShipsForEveryFont() {
-        // OFL 1.1 requires the notice to travel with the redistributed font.
-        let dir = FoveaResources.url("Fonts/")
-        XCTAssertNotNil(dir)
-        let licences = (try? FileManager.default.contentsOfDirectory(atPath: dir!.path))?
-            .filter { $0.hasPrefix("OFL-") } ?? []
-        XCTAssertEqual(licences.count, FeedFont.allCases.count)
-    }
-
-    func testPoolFallsBackRatherThanReturningNothing() {
-        XCTAssertEqual(FeedFont.pool([], role: .display),
-                       FeedFont.allCases.filter { $0.role == .display })
-        // Only text faces enabled: the display pool borrows them instead of emptying.
-        let textOnly: [FeedFont] = [.dmSans, .karla]
-        XCTAssertEqual(FeedFont.pool(textOnly, role: .display), textOnly)
-        XCTAssertEqual(FeedFont.pool(textOnly, role: .text), textOnly)
-    }
-
-    func testFontPickIsDeterministicAndSpreads() {
-        let display = FeedFont.allCases.filter { $0.role == .display }
-        let text = FeedFont.allCases.filter { $0.role == .text }
-        let a = SemanticFingerprint.fontPick(captureId: "cap-navbar", display: display, text: text)
-        let b = SemanticFingerprint.fontPick(captureId: "cap-navbar", display: display, text: text)
-        XCTAssertEqual(a.display, b.display)
-        XCTAssertEqual(a.text, b.text)
-
-        let picks = (0..<120).compactMap {
-            SemanticFingerprint.fontPick(captureId: "cap-\($0)", display: display, text: text).display
-        }
-        XCTAssertEqual(Set(picks).count, display.count, "some display faces never get picked")
-    }
-
-    func testSingleWeightFacesAreFlagged() {
-        XCTAssertTrue(FeedFont.instrumentSerif.isSingleWeight)
-        XCTAssertTrue(FeedFont.specialGothic.isSingleWeight)
-        XCTAssertFalse(FeedFont.fraunces.isSingleWeight)
-    }
-
-    func testSettingsRoundTripFontSelection() throws {
-        var s = UserSettings.default
-        s.feedFonts = [.fraunces, .dmSans]
-        let data = try JSONEncoder().encode(s)
-        XCTAssertEqual(try JSONDecoder().decode(UserSettings.self, from: data).feedFonts,
-                       [.fraunces, .dmSans])
-    }
-
-    /// A blob naming a face that no longer exists must not take the decode down.
-    func testUnknownFontIdFallsBack() throws {
-        let data = #"{"feedFonts":["fraunces","comic-sans"]}"#.data(using: .utf8)!
-        let s = try JSONDecoder().decode(UserSettings.self, from: data)
-        XCTAssertEqual(s.feedFonts, UserSettings.default.feedFonts)
     }
 }
