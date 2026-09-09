@@ -3,3 +3,4 @@
 build/
 .gstack/
 *.swp
+Prototypes/.build/
