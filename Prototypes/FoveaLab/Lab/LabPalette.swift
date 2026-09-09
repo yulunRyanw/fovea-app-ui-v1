@@ -16,7 +16,7 @@ final class LabPaletteController {
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 420),
                         styleMask: [.titled, .utilityWindow, .nonactivatingPanel, .closable],
                         backing: .buffered, defer: false)
-        panel.title = "Fovea Lab"
+        panel.title = "Lab"
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.becomesKeyOnlyIfNeeded = true
@@ -36,14 +36,24 @@ final class LabPaletteController {
     func show() { follow(); panel.orderFront(nil) }
     func hide() { panel.orderOut(nil) }
 
-    /// Sits to the right of the lab window, top-aligned; falls to the left when there is no room.
+    /// Sits to the right of the lab window, top-aligned; to the left when the right has no
+    /// room; and when neither side fits (a 980 pt window on a 13-inch display) it tucks
+    /// into the screen's bottom-right corner, over the window, where it stays reachable.
     func follow() {
         guard let w = follows, let screen = w.screen ?? NSScreen.main else { return }
         let f = w.frame
+        let v = screen.visibleFrame
+        let size = panel.frame.size
         var x = f.maxX + 12
-        if x + panel.frame.width > screen.visibleFrame.maxX { x = f.minX - 12 - panel.frame.width }
-        let y = f.maxY - panel.frame.height
-        panel.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY, y)))
+        var y = f.maxY - size.height
+        if x + size.width > v.maxX {
+            x = f.minX - 12 - size.width
+            if x < v.minX {
+                x = v.maxX - size.width - 12
+                y = v.minY + 12
+            }
+        }
+        panel.setFrameOrigin(NSPoint(x: x, y: max(v.minY, min(y, v.maxY - size.height))))
     }
 }
 

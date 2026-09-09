@@ -32,6 +32,11 @@ final class NotchDock: NSObject, NSWindowDelegate {
         })
     }
 
+    // MARK: Smoke hooks
+
+    var neckAlpha: CGFloat { neck?.panel.alphaValue ?? 0 }
+    var neckFrame: NSRect { neck?.panel.frame ?? .zero }
+
     // MARK: Geometry
 
     private var screen: NSScreen { window.screen ?? ScreenObserver.screenWithPointer ?? NSScreen.main! }
@@ -86,6 +91,15 @@ final class NotchDock: NSObject, NSWindowDelegate {
         let target = dockFrame()
         atDock = true
         zone = .ready
+        if ProcessInfo.processInfo.environment["FOVEA_LAB_LOG"] != nil {
+            let m = metrics
+            FileHandle.standardError.write(Data("lab: screen frame=\(m.frame) visible=\(m.visibleFrame) menuBar=\(m.menuBarHeight) notch=\(m.hasNotch)\n".utf8))
+            FileHandle.standardError.write(Data("lab: dock frame=\(target) seed=\(seedFrame())\n".utf8))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self else { return }
+                FileHandle.standardError.write(Data("lab: after open frame=\(self.window.frame) visible=\(self.window.isVisible) alpha=\(self.window.contentView?.alphaValue ?? -1) screen=\(self.window.screen?.frame ?? .zero)\n".utf8))
+            }
+        }
         if state.reduceMotion {
             window.setFrame(target, display: true)
             window.contentView?.alphaValue = 1
@@ -177,10 +191,12 @@ final class NotchDock: NSObject, NSWindowDelegate {
         if state.reduceMotion {
             window.setFrameOrigin(origin); flying = false; completion(); return
         }
+        // The animator proxy honors setFrame(_:display:), not setFrameOrigin.
+        let target = NSRect(origin: origin, size: window.frame.size)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Tokens.Motion.Dock.flightDuration * LabMotion.scale
             ctx.timingFunction = Tokens.Motion.caTimingFunction
-            window.animator().setFrameOrigin(origin)
+            window.animator().setFrame(target, display: true)
         } completionHandler: {
             Task { @MainActor in self.flying = false; completion() }
         }

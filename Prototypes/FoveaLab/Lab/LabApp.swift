@@ -79,6 +79,7 @@ final class LabAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         NSApp.activate(ignoringOtherApps: true)
+        if args.contains("--smoke") { LabSmoke.run(state: state, dock: dock) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
