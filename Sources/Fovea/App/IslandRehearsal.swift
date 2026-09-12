@@ -598,21 +598,21 @@ enum IslandRehearsal {
             ctx.setFillColor(backdrop ?? CGColor(gray: 1, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
             let bounds = CGRect(x: metrics.frame.minX + region.minX, y: displayTopCG + region.minY, width: region.width, height: region.height)
+            // Back to front, each window with its own alpha: a window-list
+            // composite ignores alphaValue, and the card fading into the mouth
+            // would otherwise print at full strength over the panel.
             let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-            let ids: [CGWindowID] = info.compactMap { entry in
+            let full = CGRect(x: 0, y: 0, width: width, height: height)
+            for entry in info.reversed() {
                 guard let pid = entry[kCGWindowOwnerPID as String] as? Int32, pid == ownPID,
-                      let number = entry[kCGWindowNumber as String] as? UInt32 else { return nil }
-                return CGWindowID(number)
+                      let number = entry[kCGWindowNumber as String] as? UInt32 else { continue }
+                let alpha = CGFloat((entry[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1)
+                guard alpha > 0.005,
+                      let image = CGWindowListCreateImage(bounds, [.optionIncludingWindow], CGWindowID(number), [.bestResolution]) else { continue }
+                ctx.setAlpha(alpha)
+                ctx.draw(image, in: full)
             }
-            if !ids.isEmpty {
-                let pointers = UnsafeMutablePointer<UnsafeRawPointer?>.allocate(capacity: ids.count)
-                defer { pointers.deallocate() }
-                for (index, id) in ids.enumerated() { pointers[index] = UnsafeRawPointer(bitPattern: UInt(id)) }
-                if let array = CFArrayCreate(nil, pointers, ids.count, nil),
-                   let image = CGWindowListCreateImageFromArray(bounds, array, [.bestResolution]) {
-                    ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-                }
-            }
+            ctx.setAlpha(1)
             return ctx.makeImage()
         }
 

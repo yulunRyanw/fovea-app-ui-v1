@@ -64,8 +64,16 @@ private struct FoveaAnswerContentRepresentable: NSViewRepresentable {
         coordinator.onHeight = onHeight
         coordinator.onReady = onReady
         if let web = coordinator.webView {
-            if coordinator.isReady { onReady() }
-            coordinator.reportHeight()
+            // Re-hosted (the card docked back, the density changed): the page
+            // is already rendered. Its readiness and height are reported on
+            // the next run-loop turn — set from inside makeNSView, SwiftUI
+            // drops the state change and the plain-text fallback stays drawn
+            // over the page.
+            let ready = coordinator.isReady
+            DispatchQueue.main.async {
+                if ready { coordinator.onReady?() }
+                coordinator.reportHeight()
+            }
             coordinator.enqueue(messageID: messageID, markdown: markdown, streaming: streaming, fontSize: fontSize, foreground: foreground)
             return web
         }
