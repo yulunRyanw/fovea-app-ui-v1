@@ -51,9 +51,25 @@ final class ScreenObserver {
     // MARK: - Screen choice
 
     /// The display containing the pointer; falls back to the main display.
+    /// `FOVEA_ISLAND_SCREEN` pins the island to one display instead (see
+    /// `pinnedScreen`), for recordings on a clean external monitor.
     static var screenWithPointer: NSScreen? {
+        if let pinned = pinnedScreen { return pinned }
         let location = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(location, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    /// `FOVEA_ISLAND_SCREEN=external`: the first display without a camera
+    /// housing that is not the primary one; a number: the display at that
+    /// index in `NSScreen.screens`. Unset or unmatched: nil (follow the pointer).
+    static var pinnedScreen: NSScreen? {
+        guard let value = ProcessInfo.processInfo.environment["FOVEA_ISLAND_SCREEN"], !value.isEmpty else { return nil }
+        let screens = NSScreen.screens
+        if value == "external" {
+            return screens.first { $0.safeAreaInsets.top == 0 && $0 !== screens.first } ?? screens.last
+        }
+        if let index = Int(value), screens.indices.contains(index) { return screens[index] }
+        return nil
     }
 
     static func metrics(for screen: NSScreen) -> ScreenMetrics {

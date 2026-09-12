@@ -367,7 +367,7 @@ enum IslandRehearsal {
                 ? "空格 下一步 · 左 Control 单击 摘要/完整 · 双击 阅读态 · Esc 关闭 · ⌘R 重来"
                 : "左 Control 单击切摘要/完整，双击进阅读态 · Esc 关闭"
             let productRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.fovea.mac").isEmpty
-            if productRunning { state.hint = "⚠︎ 正式版 Fovea 正在运行，它的岛会和排练重叠，请先退出它 · " + state.hint }
+            if productRunning, mode != "record" { state.hint = "⚠︎ 正式版 Fovea 正在运行，它的岛会和排练重叠，请先退出它 · " + state.hint }
         }
     }
 
@@ -423,12 +423,25 @@ enum IslandRehearsal {
         private var pendingStill: (Int, String)?
         private var thread: Thread?
 
+        /// `FOVEA_RECORD_BACKDROP=white`: instead of the display, only this
+        /// process's windows (the island, the floating card, the caption) are
+        /// captured and composited over white — whatever wallpaper, menu bar
+        /// or other app is on the screen stays out of the video.
+        private let backdrop: CGColor?
+        private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
+        /// CG (top-down, primary-display origin) y of this display's top edge.
+        private let displayTopCG: CGFloat
+        private let scale: CGFloat
+
         @MainActor
         init(metrics: ScreenMetrics, panel: NSPanel?) {
             self.metrics = metrics
             let screen = NSScreen.screens.first(where: { $0.frame == metrics.frame }) ?? NSScreen.main
             displayID = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
             windowID = panel.map { CGWindowID($0.windowNumber) }
+            backdrop = ProcessInfo.processInfo.environment["FOVEA_RECORD_BACKDROP"] == "white" ? CGColor(gray: 1, alpha: 1) : nil
+            displayTopCG = (NSScreen.screens.first?.frame.maxY ?? metrics.frame.maxY) - metrics.frame.maxY
+            scale = screen?.backingScaleFactor ?? 2
             let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
             directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                 .appendingPathComponent("rendered/rehearsal-\(stamp)", isDirectory: true)
@@ -559,6 +572,7 @@ enum IslandRehearsal {
         }
 
         private func grab() -> CGImage? {
+            if backdrop != nil { return grabOwnWindows() }
             if screenCaptureWorks != false, let image = grabScreen() {
                 if screenCaptureWorks == nil {
                     screenCaptureWorks = !Self.looksBlank(image)
@@ -573,6 +587,33 @@ enum IslandRehearsal {
         private func grabScreen() -> CGImage? {
             guard let displayID else { return nil }
             return CGDisplayCreateImage(displayID, rect: region)
+        }
+
+        /// This process's on-screen windows, front to back as the window server
+        /// lists them, composited over the backdrop. No window: a blank frame.
+        private func grabOwnWindows() -> CGImage? {
+            let width = Int(region.width * scale), height = Int(region.height * scale)
+            guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            ctx.setFillColor(backdrop ?? CGColor(gray: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            let bounds = CGRect(x: metrics.frame.minX + region.minX, y: displayTopCG + region.minY, width: region.width, height: region.height)
+            let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+            let ids: [CGWindowID] = info.compactMap { entry in
+                guard let pid = entry[kCGWindowOwnerPID as String] as? Int32, pid == ownPID,
+                      let number = entry[kCGWindowNumber as String] as? UInt32 else { return nil }
+                return CGWindowID(number)
+            }
+            if !ids.isEmpty {
+                let pointers = UnsafeMutablePointer<UnsafeRawPointer?>.allocate(capacity: ids.count)
+                defer { pointers.deallocate() }
+                for (index, id) in ids.enumerated() { pointers[index] = UnsafeRawPointer(bitPattern: UInt(id)) }
+                if let array = CFArrayCreate(nil, pointers, ids.count, nil),
+                   let image = CGWindowListCreateImageFromArray(bounds, array, [.bestResolution]) {
+                    ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                }
+            }
+            return ctx.makeImage()
         }
 
         private func grabWindow() -> CGImage? {
