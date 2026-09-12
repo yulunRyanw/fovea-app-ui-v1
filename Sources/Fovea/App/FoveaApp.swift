@@ -2,8 +2,7 @@ import SwiftUI
 import AppKit
 import FoveaCore
 
-@main
-struct FoveaApp: App {
+@main struct FoveaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var model = AppModel(services: .shared)
 
@@ -74,7 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard services.options.islandEnabled, !Snapshots.isRunning else { return }
         let screen = ScreenObserver.screenWithPointer ?? NSScreen.main
         let metrics = screen.map(ScreenObserver.metrics(for:)) ?? .sampleNotched
-        let model = services.makeIslandModel(metrics: metrics)
+        let rehearsal = services.options.islandRehearsal != nil
+        let model = services.makeIslandModel(
+            metrics: metrics,
+            services: rehearsal ? IslandRehearsal.services(from: services.makeIslandServices()) : nil)
         let controller = IslandController(model: model)
         services.islandController = controller
         controller.start()
@@ -86,6 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let suite = services.options.islandEvalSuite {
             IslandEval.run(controller: controller, suite: suite)
+        }
+        if let mode = services.options.islandRehearsal {
+            IslandRehearsal.run(controller: controller, mode: mode)
+            // The rehearsal is about the island alone: the prototype's main
+            // window (the captures feed) is not part of it, so it goes away.
+            // SwiftUI opens the `Window` scene right after launch.
+            DispatchQueue.main.async { Self.closeMainWindow() }
+        }
+    }
+
+    private static func closeMainWindow() {
+        for window in NSApp.windows where window.title == "Fovea" && !(window is NSPanel) {
+            window.close()
         }
     }
 

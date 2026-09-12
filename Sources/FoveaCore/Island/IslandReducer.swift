@@ -21,7 +21,11 @@ public enum IslandReducer {
 
         case .hotkeyUp:
             guard s.phase == .listening else { return [] }
-            s.phase = .transcribing
+            // Release freezes the destination: the picker closes with the choice kept.
+            s.destinationMenuOpen = false
+            s.phase = .processing(s.sessionKind)
+            s.processingStartedAt = Date()
+            s.compactContentWidth = IslandLayoutSpec().processingRowWidth
             return [.stopMetering, .finishTranscription]
 
         // MARK: Pointer / focus
@@ -97,29 +101,74 @@ public enum IslandReducer {
             return [.stopMetering, .cancelTranscription] + fail(&s, failure)
 
         case .transcriptPartial(let text):
-            guard s.phase == .listening || s.phase == .transcribing else { return [] }
+            guard s.phase == .listening || s.phase == .transcribing || s.phase.isProcessing else { return [] }
             s.partialTranscript = text
             return []
 
         case .transcriptFinal(let text):
-            guard s.phase == .listening || s.phase == .transcribing else { return [] }
+            guard s.phase == .listening || s.phase == .transcribing || s.phase.isProcessing else { return [] }
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             s.partialTranscript = trimmed
             guard !trimmed.isEmpty else {
                 return [.stopMetering] + fail(&s, IslandFailure("Didn’t catch that.", recovery: .retry))
             }
+            // The product keeps processing until the round's outcome arrives
+            // (`processingFinished`); the transcript is only remembered here.
             switch s.sessionKind {
             case .voiceFlow:
-                var draft = ReviewDraft(transcript: trimmed, referents: s.capturedReferents)
-                draft.routes = .resolving
-                s.review = draft
-                s.phase = .review
-                return [.stopMetering, .resolveRoutes(draft), .requestKey, .focusEditor]
+                s.retainedText = trimmed
             case .quickAnswer:
                 s.quickAnswer = QuickAnswerState(question: trimmed)
-                s.phase = .quickAnswer(.attached)
-                return [.stopMetering, .ask(question: trimmed, history: []), .requestKey, .focusFollowUp]
+                s.resumeQuickAnswer = nil
             }
+            return [.stopMetering]
+
+        case .processingFinished(let outcome):
+            guard s.phase.isProcessing else { return [] }
+            s.processingStartedAt = nil
+            switch outcome {
+            case .answered:
+                guard let qa = s.quickAnswer else { return rest(&s) }
+                // The island grows the summary card first; the expand key opens the slab.
+                s.phase = .quickAnswer(.summary)
+                return [.ask(question: qa.question, history: qa.history), .releaseKey]
+            case .delivered(let target):
+                s.phase = .delivered(target)
+                s.compactContentWidth = IslandLayoutSpec().deliveredRowWidth
+                return [.scheduleDeliveredDismiss]
+            case .retained(let text):
+                s.retainedText = text
+                s.phase = .retained
+                return []
+            }
+
+        case .deliveredElapsed:
+            guard case .delivered = s.phase else { return [] }
+            return rest(&s)
+
+        case .dismissRetained:
+            guard s.phase == .retained else { return [] }
+            s.retainedText = ""
+            return rest(&s)
+
+        case .progressNote(let note):
+            guard s.quickAnswer != nil else { return [] }
+            s.quickAnswer?.note = note
+            return []
+
+        case .toolReturned:
+            guard s.quickAnswer != nil else { return [] }
+            s.quickAnswer?.toolsReturned += 1
+            return []
+
+        case .toolsInFlight(let inFlight):
+            guard s.quickAnswer != nil else { return [] }
+            s.quickAnswer?.toolsInFlight = inFlight
+            return []
+
+        case .materialsCaptured(let count):
+            s.capturedMaterials = count
+            return []
 
         case .transcriptionFailed(let failure):
             guard s.phase == .listening || s.phase == .transcribing else { return [] }
@@ -300,11 +349,13 @@ public enum IslandReducer {
         case .answerFinished:
             guard s.quickAnswer != nil else { return [] }
             s.quickAnswer?.streaming = false
+            s.quickAnswer?.finishedAt = Date()
             return []
 
         case .answerFailed(let message):
             guard s.quickAnswer != nil else { return [] }
             s.quickAnswer?.streaming = false
+            s.quickAnswer?.finishedAt = Date()
             s.quickAnswer?.error = message
             return []
 
@@ -326,6 +377,67 @@ public enum IslandReducer {
             qa.followUp = ""
             s.quickAnswer = qa
             return [.ask(question: question, history: history)]
+
+        case .toggleDestinationMenu:
+            guard s.phase == .listening, s.sessionKind == .quickAnswer else { return [] }
+            s.destinationMenuOpen.toggle()
+            s.destinationQuery = ""
+            s.destinationHighlight = s.destinationMenuOpen ? Self.highlightIndex(for: s.destination) : 0
+            return s.destinationMenuOpen ? [.requestKey] : [.releaseKey]
+
+        case .closeDestinationMenu:
+            guard s.destinationMenuOpen else { return [] }
+            s.destinationMenuOpen = false
+            return [.releaseKey]
+
+        case .destinationMove(let delta, let count):
+            guard s.destinationMenuOpen, count > 0 else { return [] }
+            s.destinationHighlight = min(count - 1, max(0, s.destinationHighlight + delta))
+            return []
+
+        case .destinationSearch(let query):
+            guard s.destinationMenuOpen else { return [] }
+            s.destinationQuery = query
+            s.destinationHighlight = 2
+            return []
+
+        case .commitDestination(let choice):
+            guard s.phase == .listening, s.sessionKind == .quickAnswer else { return [] }
+            s.destination = choice
+            s.destinationMenuOpen = false
+            let spec = IslandLayoutSpec()
+            s.compactContentWidth = choice == .automatic ? spec.recordingRowWidthQuickAnswer : spec.recordingRowWidthQuickAnswerChosen
+            return [.releaseKey]
+
+        case .toggleQuickAnswerDensity:
+            switch s.phase {
+            case .listening where s.sessionKind == .quickAnswer:
+                // While recording, the expand key means the destination (product rule).
+                return reduce(&s, .toggleDestinationMenu)
+            case .quickAnswer(.summary):
+                s.phase = .quickAnswer(.attached)
+                return [.requestKey]
+            case .quickAnswer(.attached):
+                s.phase = .quickAnswer(.summary)
+                return [.releaseKey]
+            case .quickAnswer(.reading):
+                s.phase = .quickAnswer(.attached)
+                return []
+            default:
+                return []
+            }
+
+        case .doubleTapExpandKey:
+            switch s.phase {
+            case .quickAnswer(.reading):
+                s.phase = .quickAnswer(.summary)
+                return [.releaseKey]
+            case .quickAnswer(.summary), .quickAnswer(.attached):
+                s.phase = .quickAnswer(.reading)
+                return [.requestKey]
+            default:
+                return []
+            }
 
         case .detach:
             guard s.phase == .quickAnswer(.attached) else { return [] }
@@ -428,6 +540,18 @@ public enum IslandReducer {
     /// Collapses to resting. Re-arms the hover only when the pointer is already away, so a
     /// collapse under a parked pointer cannot reopen the list until the pointer leaves.
     private static func rest(_ s: inout IslandState) -> [IslandEffect] {
+        if let placement = s.resumeQuickAnswer, s.quickAnswer != nil {
+            // The VoiceFlow session that interrupted the answer is over: the island
+            // is free again, so the answer returns where it was.
+            s.resumeQuickAnswer = nil
+            s.phase = .quickAnswer(placement)
+            s.hoverArmed = false
+            s.hoverDwellPending = false
+            s.failureHold = false
+            s.recentlySentTaskId = nil
+            let base: [IslandEffect] = [.cancelHoverDwell, .cancelExitGrace, .cancelSentGrace]
+            return placement == .summary ? base : base + [.requestKey]
+        }
         s.phase = .resting
         s.hoverArmed = s.pointerZone == .outside
         s.hoverDwellPending = false
@@ -457,10 +581,18 @@ public enum IslandReducer {
         case .transcriptionFailed:
             fx.append(.cancelFailureCountdown)
             s.failureHold = false
-        case .quickAnswer(.attached):
-            // A new session ends the visible Quick Answer.
-            s.quickAnswer = nil
-            fx += [.cancelAsk, .releaseKey]
+        case .quickAnswer(.attached), .quickAnswer(.summary), .quickAnswer(.reading):
+            if kind == .voiceFlow, s.quickAnswer != nil {
+                // VoiceFlow is a brief interruption: the answer keeps running out of
+                // sight and comes back at the same density once the island is free.
+                if case .quickAnswer(let placement) = s.phase { s.resumeQuickAnswer = placement }
+                fx.append(.releaseKey)
+            } else {
+                // A new Quick Answer ends the visible one.
+                s.quickAnswer = nil
+                s.resumeQuickAnswer = nil
+                fx += [.cancelAsk, .releaseKey]
+            }
         case .quickAnswer(.detached):
             if kind == .quickAnswer {
                 // A new Quick Answer starts a new Chat; the old panel goes away.
@@ -469,10 +601,17 @@ public enum IslandReducer {
                 fx += [.cancelAsk, .dismissDetached]
             }
             // For VoiceFlow the detached session survives; only the notch changes.
-        case .listening, .transcribing, .review, .sending, .sendFailed:
+        case .listening, .transcribing, .review, .sending, .sendFailed, .processing, .delivered, .retained:
             return []   // protect the session in flight
         }
         s.sessionKind = kind
+        s.capturedMaterials = 0
+        s.destination = .automatic
+        s.destinationMenuOpen = false
+        s.destinationQuery = ""
+        s.destinationHighlight = 0
+        let spec = IslandLayoutSpec()
+        s.compactContentWidth = kind == .quickAnswer ? spec.recordingRowWidthQuickAnswer : spec.recordingRowWidthVoiceFlow
         s.partialTranscript = ""
         if !keepReferents { s.capturedReferents = [] }
         s.recentlySentTaskId = nil
@@ -480,6 +619,15 @@ public enum IslandReducer {
         s.hoverArmed = false
         s.phase = .listening
         return fx + [.cancelHoverDwell, .cancelExitGrace, .cancelSentGrace, .startMetering, .startTranscription]
+    }
+
+    /// Where the picker's highlight starts: on the committed choice.
+    private static func highlightIndex(for choice: QuickAnswerDestinationChoice) -> Int {
+        switch choice {
+        case .automatic: return 0
+        case .newConversation: return 1
+        case .existing: return 2
+        }
     }
 
     private static func abandonVoice(_ s: inout IslandState, stop: Bool = true) -> [IslandEffect] {
@@ -492,6 +640,7 @@ public enum IslandReducer {
     private static func closeQuickAnswer(_ s: inout IslandState) -> [IslandEffect] {
         guard case .quickAnswer(let placement) = s.phase else { return [] }
         s.quickAnswer = nil
+        s.resumeQuickAnswer = nil
         s.dockZone = .outside
         var fx: [IslandEffect] = [.cancelAsk, .releaseKey]
         if placement == .detached { fx.append(.dismissDetached) }
@@ -513,6 +662,11 @@ public enum IslandReducer {
 
     /// Escape closes the innermost thing first.
     private static func escape(_ s: inout IslandState) -> [IslandEffect] {
+        if s.phase == .listening, s.destinationMenuOpen {
+            // Esc closes the picker first; a second Esc cancels the recording.
+            s.destinationMenuOpen = false
+            return [.releaseKey]
+        }
         switch s.phase {
         case .review, .sendFailed:
             if s.review?.selector.isOpen == true { return reduce(&s, .selectorBack) }
@@ -532,10 +686,22 @@ public enum IslandReducer {
             return abandonVoice(&s)
         case .transcriptionFailed:
             return [.cancelFailureCountdown] + abandonVoice(&s, stop: false)
+        case .quickAnswer(.reading):
+            // Esc leaves the reading density first; the next Esc closes.
+            s.phase = .quickAnswer(.attached)
+            return []
         case .quickAnswer:
             return closeQuickAnswer(&s)
         case .agentList:
             return leaveList(&s)
+        case .processing:
+            s.processingStartedAt = nil
+            return abandonVoice(&s, stop: false)
+        case .delivered:
+            return []
+        case .retained:
+            s.retainedText = ""
+            return rest(&s)
         case .resting:
             return []
         }

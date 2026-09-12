@@ -104,6 +104,55 @@ enum Tokens {
         static let xxxl: CGFloat = 44
     }
 
+    // MARK: - Fovea product palette (the island rows and the answer panel use these,
+    // copied from the product's NotchIslandPalette and IslandPanelTokens)
+
+    enum Fovea {
+        enum Island {
+            static let surface = Color.black
+            static let separator = Color(red: 0x30 / 255, green: 0x30 / 255, blue: 0x2D / 255)
+            static let card = Color(red: 0x16 / 255, green: 0x16 / 255, blue: 0x16 / 255)
+            static let control = Color(red: 0x20 / 255, green: 0x20 / 255, blue: 0x20 / 255)
+            static let text = Color(red: 0xEE / 255, green: 0xEE / 255, blue: 0xE9 / 255)
+            static let subText = Color(red: 0xC5 / 255, green: 0xC5 / 255, blue: 0xBD / 255)
+            static let mutedText = Color(red: 0xA1 / 255, green: 0xA1 / 255, blue: 0x9A / 255)
+            static let railTrack = Color(red: 0x28 / 255, green: 0x28 / 255, blue: 0x25 / 255)
+            static let success = Color(red: 0x8D / 255, green: 0xD2 / 255, blue: 0xAD / 255)
+            static let danger = Color(red: 0xFF / 255, green: 0x92 / 255, blue: 0x92 / 255)
+            static let voiceFlow = Color(red: 0x6F / 255, green: 0x87 / 255, blue: 0xFF / 255)
+            static let quickAnswer = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+            static let voiceFlowText = Color(red: 0xA2 / 255, green: 0xB2 / 255, blue: 0xFF / 255)
+            static let quickAnswerText = Color(red: 0xF5 / 255, green: 0xCE / 255, blue: 0x73 / 255)
+            /// The compact row: 28 pt row, 8 pt gutter (the rail lives there), 12 pt sides.
+            static let rowHeight: CGFloat = 28
+            static let rowBottomPadding: CGFloat = 8
+            static let horizontalPadding: CGFloat = 12
+            static let itemSpacing: CGFloat = 7
+            static let waveformWidth: CGFloat = 65
+            static let escControlWidth: CGFloat = 34
+            static let accessoryWidth: CGFloat = 50
+        }
+        enum Panel {
+            static let textPrimary = Color.white
+            static let textSecondary = Color.white.opacity(0.62)
+            static let textTertiary = Color.white.opacity(0.40)
+            static let hairline = Color.white.opacity(0.10)
+            static let field = Color.white.opacity(0.08)
+            static let card = Color.white.opacity(0.05)
+            static let needsYou = Color(red: 0xF5 / 255, green: 0xB8 / 255, blue: 0x4B / 255)
+            static let failed = Color(red: 0xF0 / 255, green: 0x6A / 255, blue: 0x6A / 255)
+            static let accent = Color(red: 0x7F / 255, green: 0x9C / 255, blue: 1.0)
+            static let horizontalPadding: CGFloat = 24
+            static let pinnedQuestionMaxHeight: CGFloat = 92
+            static let slabMaxContent: CGFloat = 420
+            /// Reading density: the body never runs wider than this, centred.
+            /// Reading density: rows use the page's width behind wider margins (no 720 column).
+            static let readingSidePadding: CGFloat = 40
+            static let chipThumb = CGSize(width: 40, height: 28)
+            static let chipsPerRow = 3
+        }
+    }
+
     // MARK: - Shape
 
     enum Radius {
@@ -220,8 +269,12 @@ enum Tokens {
             }
         }
 
+        /// FOVEA_SLOW_MOTION=5 stretches every island animation 5x so a screen recording can
+        /// be checked frame by frame. Review only; never set in a shipped build.
+        nonisolated(unsafe) static var slowMotion: Double = max(1, Double(ProcessInfo.processInfo.environment["FOVEA_SLOW_MOTION"] ?? "") ?? 1)
+
         static func animation(_ kind: Kind) -> Animation {
-            .timingCurve(curve, duration: kind.duration)
+            Animation.timingCurve(curve, duration: kind.duration).speed(1 / slowMotion)
         }
 
         /// Reduced motion: movement becomes an instant state change (nil) or a short fade.
@@ -235,12 +288,14 @@ enum Tokens {
         enum Spring {
             case open, close, convert, hover
             var animation: Animation {
+                let base: Animation
                 switch self {
-                case .open: return .smooth(duration: 0.34)
-                case .close: return .smooth(duration: 0.30)
-                case .convert: return .smooth(duration: 0.28)
-                case .hover: return .smooth(duration: 0.18)
+                case .open: base = .smooth(duration: 0.34)
+                case .close: base = .smooth(duration: 0.30)
+                case .convert: base = .smooth(duration: 0.28)
+                case .hover: base = .smooth(duration: 0.18)
                 }
+                return base.speed(1 / Motion.slowMotion)
             }
         }
 
@@ -420,28 +475,28 @@ enum Tokens {
             static let surface = Color(hex: 0x000000)
             /// Detached panel and menus, one step off black.
             static let surfaceElevated = Color(hex: 0x111114)
-            static let textPrimary = Color.white
-            static let textSecondary = Color.white.opacity(0.62)
-            static let textTertiary = Color.white.opacity(0.40)
-            static let hairline = Color.white.opacity(0.10)
-            static let hover = Color.white.opacity(0.06)
-            static let pressed = Color.white.opacity(0.10)
-            static let field = Color.white.opacity(0.08)
-            static let waveform = Color.white
-            static let progressTrack = Color.white.opacity(0.14)
-            static let progressFill = Color.white.opacity(0.85)
+            static let textPrimary = Color.primary
+            static let textSecondary = Color.primary.opacity(0.62)
+            static let textTertiary = Color.primary.opacity(0.40)
+            static let hairline = Color.primary.opacity(0.10)
+            static let hover = Color.primary.opacity(0.06)
+            static let pressed = Color.primary.opacity(0.10)
+            static let field = Color.primary.opacity(0.08)
+            static let waveform = Color.primary
+            static let progressTrack = Color.primary.opacity(0.14)
+            static let progressFill = Color.primary.opacity(0.85)
             /// Status tints; always paired with the status word.
             static let needsYou = Color(hex: 0xF5B84B)
             static let failed = Color(hex: 0xF06A6A)
-            static let dockOutline = Color.white.opacity(0.35)
+            static let dockOutline = Color.primary.opacity(0.35)
             /// The receiver's well: dim while the panel approaches, brighter once release docks.
-            static let dockWell = Color.white.opacity(0.06)
-            static let dockWellReady = Color.white.opacity(0.12)
-            static let focus = Color.white.opacity(0.7)
+            static let dockWell = Color.primary.opacity(0.06)
+            static let dockWellReady = Color.primary.opacity(0.12)
+            static let focus = Color.primary.opacity(0.7)
             /// The current choice in a list (No Folder, the selected Chat).
-            static let selection = Color.white.opacity(0.12)
+            static let selection = Color.primary.opacity(0.12)
             /// The task Send just created, while the list acknowledges it.
-            static let recentHighlight = Color.white.opacity(0.10)
+            static let recentHighlight = Color.primary.opacity(0.10)
         }
 
         enum Type_ {
@@ -462,6 +517,9 @@ enum Tokens {
             static var expandedTop: CGFloat { Layout.layoutSpec.expandedTopRadius }
             static var expandedBottom: CGFloat { Layout.layoutSpec.expandedBottomRadius }
             static var slabBottom: CGFloat { Layout.layoutSpec.slabBottomRadius }
+            static var slabTop: CGFloat { Layout.layoutSpec.slabTopRadius }
+            static var summaryTop: CGFloat { Layout.layoutSpec.summaryTopRadius }
+            static var summaryBottom: CGFloat { Layout.layoutSpec.summaryBottomRadius }
             static let detached: CGFloat = 16
             /// The receiver's well, concentric with the slab's bottom corners.
             static let dockWell: CGFloat = 12
@@ -481,6 +539,7 @@ enum Tokens {
             static var listWidth: CGFloat { layoutSpec.listWidth }
             static var reviewWidth: CGFloat { layoutSpec.reviewWidth }
             static var slabWidth: CGFloat { layoutSpec.slabWidth }
+            static var summaryWidth: CGFloat { layoutSpec.summaryWidth }
             static var dockSnapDistance: CGFloat { layoutSpec.dockSnapDistance }
             static var dockApproachDistance: CGFloat { layoutSpec.dockApproachDistance }
             static var dockReceiverBelow: CGFloat { layoutSpec.dockReceiverBelow }
@@ -574,5 +633,44 @@ extension Color {
                   red: Double((hex >> 16) & 0xFF) / 255,
                   green: Double((hex >> 8) & 0xFF) / 255,
                   blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+// Isolated native review window; retains the original Island design tokens.
+extension Tokens {
+    enum ReadingPreview {
+        static let canvas = Color(hex: 0xCBD0D1)
+        static let window = CGSize(width: 860, height: 800)
+        static let cardRadius: CGFloat = 22
+        static let notchHeight: CGFloat = 32
+        static let compactWidth: CGFloat = 480
+        static let replayInterval: Double = 5
+        static let replayConversationHeight: CGFloat = 390
+        static let conversationHeight: CGFloat = 520
+        static let notchEar: CGFloat = 12
+        static let menuBar = Color.white.opacity(0.30)
+        static let sheetWidth: CGFloat = 460
+        static let answerRegionHeight: CGFloat = 300
+        static let answerFontSize = 13.5
+        static let answerLight = "#252A30"
+        static let answerDark = "#F1F3F5"
+        static let lightAnswerCSS = "strong,h1,h2,h3,h4,h5,h6{color:inherit}"
+        static let darkAnswerCSS = """
+        :root{color-scheme:dark}strong,h1,h2,h3,h4,h5,h6{color:inherit}
+        pre,code,th{background:#19191c;color:#f1f3f5}pre code{background:none}
+        blockquote{color:#b7b7bd;border-left-color:#505057}
+        td,th{border-color:#3a3a40}hr{border-top-color:#3a3a40}a{color:#a9bfff}
+        .answer-image{display:block;max-width:100%;height:auto;margin:12px 0;border-radius:8px}
+        .image-unavailable{display:block;color:#b7b7bd;font-size:.92em}
+        """
+        static let thumbnail: CGFloat = 32
+        static let inspectorWidth: CGFloat = 700
+        static let inspectorHeight: CGFloat = 580
+        static let editorHeight: CGFloat = 180
+        static let backdropAngle: Double = -12
+        static let backdropBlue = Color(hex: 0xA3BACB)
+        static let backdropSand = Color(hex: 0xD5C9B5)
+        static let graphite = Color(hex: 0x282C30)
+        static let glassTint = Color(hex: 0x20252A).opacity(0.40)
     }
 }

@@ -8,3 +8,16 @@ Prototypes/.build/
 # Saved pages from animations.dev — a paid third-party course, kept locally for
 # reference only. Never redistribute: this repo is public.
 docs/motion/course/
+
+# Local review material and real conversation data: never pushed.
+rendered/
+rendered-history/
+screenshots/
+preview-data/
+build.log
+rehearsal-data.json
+
+# The product's answer renderer (fovea-mac AnswerContent: Markdown, tables,
+# code, KaTeX). Product code, not published here: drop the folder in locally
+# and the rehearsal renders the body with it; without it the body is plain text.
+Sources/FoveaCore/Resources/AnswerContent/

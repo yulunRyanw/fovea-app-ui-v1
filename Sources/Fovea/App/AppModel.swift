@@ -25,9 +25,17 @@ struct DemoOptions {
     var islandSmoke = false
     /// Run an eval suite (`island-eval:<suite>`), then quit with a pass/fail code.
     var islandEvalSuite: String? = nil
+    /// Walk the Quick Answer island sequence for design review:
+    /// `island-rehearsal` (step with Space), `island-rehearsal:auto`, `island-rehearsal:record`.
+    var islandRehearsal: String? = nil
 
     static func parse(_ args: [String] = CommandLine.arguments) -> DemoOptions {
         var o = DemoOptions()
+        // The rehearsal bundle opens straight into the console: every flow, every key, live.
+        if Bundle.main.bundleIdentifier?.hasSuffix(".rehearsal") == true {
+            o.islandRehearsal = "console"
+            o.persist = false
+        }
         var i = 0
         while i < args.count {
             let a = args[i]
@@ -48,8 +56,10 @@ struct DemoOptions {
                         case "island-real": o.islandReal = true
                         case "island-simulated": o.islandSimulated = true
                         case "island-smoke": o.islandSmoke = true
+                        case "island-rehearsal": o.islandRehearsal = "manual"
                         default:
-                            if flag.hasPrefix("island-eval:") { o.islandEvalSuite = String(flag.dropFirst("island-eval:".count)) }
+                            if flag.hasPrefix("island-rehearsal:") { o.islandRehearsal = String(flag.dropFirst("island-rehearsal:".count)) }
+                            else if flag.hasPrefix("island-eval:") { o.islandEvalSuite = String(flag.dropFirst("island-eval:".count)) }
                             else if let scenario = IslandScenario.parse(String(flag)) { o.islandScenario = scenario }
                         }
                     }
