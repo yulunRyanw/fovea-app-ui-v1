@@ -50,17 +50,42 @@ public struct IslandLayoutSpec: Hashable, Sendable {
     public var softwareIslandMinHeight: CGFloat = 24
     /// Voice states (Listening, Transcribing, the Retry state) keep the notch's width and
     /// extend this far below it.
-    public var voiceBelow: CGFloat = 44
+    public var voiceBelow: CGFloat = 36
+    /// The product's compact rows: recording (Quick Answer / VoiceFlow), processing, delivered.
+    public var recordingRowWidthQuickAnswer: CGFloat = 326
+    /// The row once a conversation is chosen: the pill widens from 132 to 184 (product).
+    public var recordingRowWidthQuickAnswerChosen: CGFloat = 378
+    /// The conversation picker opened from the recording row (product: 1280 wide, clamped
+    /// to the display, content up to 460 tall).
+    public var destinationWidth: CGFloat = 1280
+    public var destinationSideMargin: CGFloat = 40
+    public var recordingRowWidthVoiceFlow: CGFloat = 130
+    public var processingRowWidth: CGFloat = 210
+    public var deliveredRowWidth: CGFloat = 230
     public var compactTopRadius: CGFloat = 6
     public var compactBottomRadius: CGFloat = 14
-    public var expandedTopRadius: CGFloat = 19
-    public var expandedBottomRadius: CGFloat = 24
+    /// Expanded surfaces (destination picker, attachments, the kept-text card) share
+    /// Final B's radii with the slab.
+    public var expandedTopRadius: CGFloat = 12
+    public var expandedBottomRadius: CGFloat = 22
     public var listWidth: CGFloat = 520
     public var reviewWidth: CGFloat = 560
     public var slabWidth: CGFloat = 560
-    public var slabBottomRadius: CGFloat = 20
+    /// Final B: the slab has the same ears as the summary card and a deeper bottom radius.
+    public var slabTopRadius: CGFloat = 12
+    public var slabBottomRadius: CGFloat = 22
+    /// The Quick Answer summary card (Final B): 480 wide, 12 pt ears and bottom corners.
+    public var summaryWidth: CGFloat = 480
+    public var summaryTopRadius: CGFloat = 12
+    public var summaryBottomRadius: CGFloat = 12
+    /// The reading density: as wide as the display allows up to this, with side margins,
+    /// and down to the bottom of the visible area minus a margin.
+    public var readingMaxWidth: CGFloat = 960
+    public var readingSideMargin: CGFloat = 40
+    public var readingBottomMargin: CGFloat = 24
     /// The panel window is this fraction of the screen height (content animates inside it).
-    public var panelHeightFraction: CGFloat = 0.5
+    /// Whole height: the reading density reaches the bottom of the visible area.
+    public var panelHeightFraction: CGFloat = 1.0
     /// Docking a dragged Quick Answer, measured from the panel's top-center to the notch's
     /// top-center. Inside `dockApproachDistance` the island opens its receiver; inside
     /// `dockSnapDistance` release docks. A zone is left at its `…Release` radius, so a
@@ -113,16 +138,19 @@ public enum PointerZone: Hashable, Sendable {
 public enum NotchGeometry {
     public enum Density: Hashable, Sendable {
         /// `receiver` is the resting notch opened to take a dragged Quick Answer back.
-        case resting, voice, receiver, list, review, slab
+        case resting, voice, receiver, summary, list, review, slab, destination, reading
 
         /// Bigger surfaces rank higher; picks the open vs. close motion.
         public var rank: Int {
             switch self {
             case .resting: return 0
             case .voice, .receiver: return 1
-            case .list: return 2
-            case .review: return 3
-            case .slab: return 4
+            case .summary: return 2
+            case .list: return 3
+            case .review: return 4
+            case .slab: return 5
+            case .destination: return 6
+            case .reading: return 7
             }
         }
     }
@@ -144,7 +172,7 @@ public enum NotchGeometry {
     }
 
     public static func frames(density: Density, metrics: ScreenMetrics, spec: IslandLayoutSpec,
-                              forceSoftware: Bool = false) -> IslandFrames {
+                              forceSoftware: Bool = false, compactContentWidth: CGFloat = 0) -> IslandFrames {
         let notch = notchRect(metrics: metrics, spec: spec, forceSoftware: forceSoftware)
         let panel = panelFrame(metrics: metrics, spec: spec)
         switch density {
@@ -156,9 +184,10 @@ public enum NotchGeometry {
                                 topRadius: spec.compactTopRadius, bottomRadius: spec.compactBottomRadius,
                                 isSlab: false)
         case .voice:
-            // Exactly the resting width; only the height grows, downward.
+            // The product's compact row: as wide as its controls need, never narrower than
+            // the notch; the height grows downward by one row and its gutter.
             return IslandFrames(panel: panel, notch: notch,
-                                width: notch.width + spec.compactTopRadius * 2,
+                                width: max(notch.width, compactContentWidth) + spec.compactTopRadius * 2,
                                 minHeight: notch.height + spec.voiceBelow,
                                 topRadius: spec.compactTopRadius, bottomRadius: spec.compactBottomRadius,
                                 isSlab: false)
@@ -174,11 +203,31 @@ public enum NotchGeometry {
                                 minHeight: notch.height,
                                 topRadius: spec.expandedTopRadius, bottomRadius: spec.expandedBottomRadius,
                                 isSlab: false)
+        case .summary:
+            return IslandFrames(panel: panel, notch: notch,
+                                width: max(spec.summaryWidth, notch.width + spec.summaryTopRadius * 2),
+                                minHeight: notch.height,
+                                topRadius: spec.summaryTopRadius, bottomRadius: spec.summaryBottomRadius,
+                                isSlab: false)
         case .slab:
             return IslandFrames(panel: panel, notch: notch,
-                                width: max(spec.slabWidth, notch.width + spec.expandedTopRadius * 2),
+                                width: max(spec.slabWidth, notch.width + spec.slabTopRadius * 2),
                                 minHeight: notch.height,
-                                topRadius: 0, bottomRadius: spec.slabBottomRadius,
+                                topRadius: spec.slabTopRadius, bottomRadius: spec.slabBottomRadius,
+                                isSlab: true)
+        case .destination:
+            return IslandFrames(panel: panel, notch: notch,
+                                width: min(spec.destinationWidth, metrics.frame.width - spec.destinationSideMargin * 2),
+                                minHeight: notch.height,
+                                topRadius: spec.slabTopRadius, bottomRadius: spec.slabBottomRadius,
+                                isSlab: true)
+        case .reading:
+            let bottom = max(metrics.frame.minY, metrics.visibleFrame.minY)
+            let height = max(notch.height, metrics.frame.maxY - bottom - spec.readingBottomMargin)
+            return IslandFrames(panel: panel, notch: notch,
+                                width: min(spec.readingMaxWidth, metrics.frame.width - spec.readingSideMargin * 2),
+                                minHeight: height,
+                                topRadius: spec.slabTopRadius, bottomRadius: spec.slabBottomRadius,
                                 isSlab: true)
         case .receiver:
             // The slab's mouth: its width and straight top, a shallow depth below the notch.

@@ -8,6 +8,12 @@ import FoveaCore
 @MainActor @Observable
 final class IslandModel {
     private(set) var state = IslandState()
+    func previewAnswer(question: String, answer: String, streaming: Bool) {
+        IslandScenario.qaLong.apply(to: &state)
+        var qa = QuickAnswerState(question: question)
+        qa.answer = answer; qa.streaming = streaming
+        state.quickAnswer = qa
+    }
     /// Microphone level 0…1 while listening.
     private(set) var audioLevel: Float = 0
     private(set) var metrics: ScreenMetrics
@@ -38,6 +44,14 @@ final class IslandModel {
     var onRequestKey: (() -> Void)?
     /// Runs the key hand-back; the controller may schedule it after the collapse settles.
     var onReleaseKey: ((_ animated: Bool) -> Void)?
+    /// The rehearsal console's event log; pointer and token chatter is left out.
+    var onEventLogged: ((String) -> Void)?
+    private static func isChatter(_ event: IslandEvent) -> Bool {
+        switch event {
+        case .pointerZoneChanged, .answerToken, .transcriptPartial, .focusChanged: return true
+        default: return false
+        }
+    }
     /// Show the floating panel; `true` continues the user's live drag (a tear-off).
     var onPresentDetached: ((_ continuingDrag: Bool) -> Void)?
     var onDismissDetached: (() -> Void)?
@@ -64,7 +78,8 @@ final class IslandModel {
 
     var frames: IslandFrames {
         NotchGeometry.frames(density: state.density, metrics: metrics,
-                             spec: Tokens.Island.Layout.layoutSpec, forceSoftware: forceSoftwareIsland)
+                             spec: Tokens.Island.Layout.layoutSpec, forceSoftware: forceSoftwareIsland,
+                             compactContentWidth: state.compactContentWidth)
     }
 
     var phase: IslandPhase { state.phase }
@@ -173,7 +188,7 @@ final class IslandModel {
     // MARK: - Events
 
     /// `FOVEA_ISLAND_LOG=1` prints every phase change; the eval harness reads `phaseLog`.
-    private static let logging = ProcessInfo.processInfo.environment["FOVEA_ISLAND_LOG"] != nil
+    static let logging = ProcessInfo.processInfo.environment["FOVEA_ISLAND_LOG"] != nil
     private(set) var phaseLog: [(time: CFTimeInterval, phase: IslandPhase)] = []
 
     func send(_ event: IslandEvent) {
@@ -182,6 +197,8 @@ final class IslandModel {
         let effects = IslandReducer.reduce(&next, event)
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let anim = Tokens.Motion.islandAnimation(from: before, to: next, reduceMotion: reduceMotion)
+        if Self.logging { print("island: send t=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent())) \(event) anim=\(anim.map { String(describing: $0) } ?? "nil") reduceMotion=\(reduceMotion)") }
+        if let onEventLogged, !Self.isChatter(event) { onEventLogged(String(describing: event)) }
         let phaseChanged = before.phase != next.phase
 
         // Effects split: the key hand-back waits for the collapse to finish so the panel
@@ -191,6 +208,15 @@ final class IslandModel {
         if let i = immediate.firstIndex(of: .releaseKey), anim != nil, phaseChanged {
             immediate.remove(at: i)
             deferred.append(.releaseKey)
+        }
+
+        // A no-op reduction (the pointer re-reporting "outside" while a surface animates,
+        // for instance) must not rewrite the state: a non-animated write during a running
+        // geometry animation snaps the surface to its target.
+        if next == before {
+            for effect in immediate { run(effect) }
+            for effect in deferred { run(effect) }
+            return
         }
 
         if let anim {
@@ -217,7 +243,7 @@ final class IslandModel {
     private func apply(_ next: IslandState, before: IslandPhase, event: IslandEvent) {
         state = next
         guard state.phase != before else { return }
-        if Self.logging { print("island: \(before) → \(state.phase)") }
+        if Self.logging { print("island: \(before) → \(state.phase) animated=\(Transaction().animation != nil ? "tx" : "-") frames=\(Int(frames.width))x\(Int(frames.minHeight))") }
         phaseLog.append((CACurrentMediaTime(), state.phase))
         if phaseLog.count > 64 { phaseLog.removeFirst(phaseLog.count - 64) }
         services.hotkeys.setEscapeCapture(state.phase.isVoice)
@@ -416,6 +442,13 @@ final class IslandModel {
         case .cancelSentGrace:
             cancel("sentGrace")
 
+        case .scheduleDeliveredDismiss:
+            replace("deliveredDismiss") { [weak self] in
+                try? await Task.sleep(for: .milliseconds(550))
+                guard !Task.isCancelled else { return }
+                self?.send(.deliveredElapsed)
+            }
+
         case .scheduleFailureCountdown:
             replace("failureCountdown") { [weak self] in
                 try? await Task.sleep(for: Tokens.Motion.failureCountdown)
@@ -524,6 +557,11 @@ final class IslandModel {
         case .agentList: text = "Agent tasks"
         case .resting: text = nil
         case .quickAnswer(.attached): text = "Quick Answer"
+        case .quickAnswer(.summary): text = "Quick Answer summary"
+        case .quickAnswer(.reading): text = "Quick Answer reading"
+        case .processing: text = "Processing"
+        case .delivered(let target): text = "Delivered to \(target)"
+        case .retained: text = "Kept for you"
         case .transcriptionFailed(let f), .sendFailed(let f): text = f.message
         default: text = nil
         }

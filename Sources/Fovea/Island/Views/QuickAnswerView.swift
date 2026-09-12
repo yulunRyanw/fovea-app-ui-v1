@@ -26,25 +26,18 @@ struct QuickAnswerView: View {
     var body: some View {
         if let qa {
             VStack(alignment: .leading, spacing: 0) {
-                Text(qa.question)
-                    .font(Tokens.Island.Type_.question)
-                    .foregroundStyle(Tokens.Island.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, Tokens.Space.m)
-                    .accessibilityAddTraits(.isHeader)
+                ReadingPreviewHeader()
+                ReadingPreviewQuestion()
+                ReadingPreviewMaterials()
 
                 Rectangle().fill(Tokens.Island.Colors.hairline).frame(height: 1)
 
-                answerRegion(qa)
-                    .padding(.vertical, Tokens.Space.l)
+                Group {
+                    if ReadingPreviewState.shared.current?.origin == "Codex" { CodexPreviewBody() }
+                    else { answerRegion(qa) }
+                }.padding(.vertical, Tokens.Space.l)
 
-                HStack(alignment: .center, spacing: Tokens.Space.s) {
-                    followUp(qa)
-                    Spacer(minLength: Tokens.Space.s)
-                    IslandIconButton(symbol: "xmark", label: "End Quick Answer",
-                                     size: Tokens.Island.Layout.closeGlyphSize) { model.send(.closeQuickAnswer) }
-                        .accessibilityHint("Closes this Quick Answer")
-                }
+                ReadingPreviewFooter()
 
                 grabber
             }
@@ -96,7 +89,7 @@ struct QuickAnswerView: View {
                                 .foregroundStyle(Tokens.Island.Colors.textTertiary)
                                 .accessibilityLabel("Waiting for the answer")
                         } else {
-                            answerText(qa.answer, streaming: qa.streaming)
+                            answerText(qa.answer.isEmpty ? "该条历史没有保存回答正文。" : qa.answer, streaming: qa.streaming)
                                 .foregroundStyle(Tokens.Island.Colors.textPrimary)
                                 .textSelection(.enabled)
                                 .accessibilityAddTraits(qa.streaming ? .updatesFrequently : [])
@@ -218,7 +211,7 @@ struct DetachedQuickAnswerView: View {
     @State private var dragging = false
 
     var body: some View {
-        QuickAnswerView(model: model, host: .detached)
+        FoveaConversationPanel(model: model, host: .detached)
             .padding(.bottom, Tokens.Space.xs)
             .background(Tokens.Island.Colors.surfaceElevated)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Island.Radius.detached, style: .continuous))

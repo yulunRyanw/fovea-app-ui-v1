@@ -4,7 +4,22 @@ import Foundation
 // UI target executes the effects with real or simulated services.
 
 public enum QuickAnswerPlacement: Hashable, Sendable {
+    /// The summary card: one line of state under the notch. The default after a question
+    /// is submitted; the expand key grows it into the attached slab.
+    case summary
     case attached, detached
+    /// The reading density: the slab grown to most of the display, for long answers.
+    case reading
+}
+
+/// How a processing phase ended (the product's round outcomes).
+public enum ProcessingOutcome: Hashable, Sendable {
+    /// Quick Answer: the answer surface takes over.
+    case answered
+    /// VoiceFlow: the text reached the target; the island shows it briefly, then rests.
+    case delivered(String)
+    /// VoiceFlow: no input box was available; the island keeps the text until dismissed.
+    case retained(String)
 }
 
 /// How close a dragged Quick Answer is to docking, from its top-center to the notch's.
@@ -40,6 +55,11 @@ public enum IslandPhase: Hashable, Sendable {
     case sending
     case sendFailed(IslandFailure)
     case quickAnswer(QuickAnswerPlacement)
+    /// The product's rounds: after the key is released the island processes (progress
+    /// rail), then either delivers, keeps the text, or hands over to the answer surface.
+    case processing(ShortcutAction)
+    case delivered(String)
+    case retained
 
     /// Listening, Transcribing and the Retry state share one outer size: the notch's
     /// width, grown downward.
@@ -61,15 +81,22 @@ public enum IslandPhase: Hashable, Sendable {
     }
     /// The notch shows the Quick Answer slab only while it is attached.
     public var showsSlab: Bool { self == .quickAnswer(.attached) }
+    public var showsSummary: Bool { self == .quickAnswer(.summary) }
+    public var isProcessing: Bool {
+        if case .processing = self { return true }
+        return false
+    }
 
     public var density: NotchGeometry.Density {
         switch self {
         case .resting: return .resting
         case .quickAnswer(.detached): return .resting
         case .agentList: return .list
-        case .listening, .transcribing, .transcriptionFailed: return .voice
-        case .review, .sending, .sendFailed: return .review
+        case .listening, .transcribing, .transcriptionFailed, .processing, .delivered: return .voice
+        case .review, .sending, .sendFailed, .retained: return .review
+        case .quickAnswer(.summary): return .summary
         case .quickAnswer(.attached): return .slab
+        case .quickAnswer(.reading): return .reading
         }
     }
 
@@ -83,7 +110,12 @@ public enum IslandPhase: Hashable, Sendable {
         case .transcribing: return "transcribing"
         case .transcriptionFailed: return "failed"
         case .review, .sending, .sendFailed: return "review"
+        case .processing: return "processing"
+        case .delivered: return "delivered"
+        case .retained: return "retained"
+        case .quickAnswer(.summary): return "qa-summary"
         case .quickAnswer(.attached): return "qa"
+        case .quickAnswer(.reading): return "qa-reading"
         }
     }
 }
@@ -156,13 +188,39 @@ public struct QuickAnswerState: Hashable, Sendable {
     /// Earlier turns of this session; the header shows the latest question.
     public var turns: [QuickAnswerTurn] = []
 
+    /// When the question was submitted; the summary card shows the elapsed time.
+    public var startedAt: Date = Date()
+    /// When the answer finished or failed; the summary card freezes its clock.
+    public var finishedAt: Date?
+    /// The agent's latest public progress line (the summary card's one line).
+    public var note: String?
+    public var toolsReturned = 0
+    public var toolsInFlight = false
+
     public init(question: String) { self.question = question }
 
     public var history: [String] { turns.flatMap { [$0.question, $0.answer] } }
 }
 
+/// Where a Quick Answer goes: the product's destination, chosen on the island while
+/// recording (left Control opens the conversation picker).
+public enum QuickAnswerDestinationChoice: Hashable, Sendable {
+    case automatic
+    /// A new conversation with one connected provider ("codex", "claude-code", "cursor"…).
+    case newConversation(provider: String)
+    case existing(id: String, title: String, provider: String)
+}
+
 public struct IslandState: Hashable, Sendable {
     public var phase: IslandPhase = .resting
+    /// The conversation picker is open over the recording row.
+    public var destinationMenuOpen = false
+    /// Typed filter for the picker's conversation list.
+    public var destinationQuery = ""
+    /// Keyboard highlight in the picker: 0 automatic, 1 new conversation, 2+ the list.
+    public var destinationHighlight = 0
+    /// The committed destination, shown on the recording row's pill.
+    public var destination: QuickAnswerDestinationChoice = .automatic
     /// Which hotkey started the current voice session.
     public var sessionKind: ShortcutAction = .voiceFlow
     public var partialTranscript = ""
@@ -191,13 +249,29 @@ public struct IslandState: Hashable, Sendable {
     public var dockZone: DockZone = .outside
     /// One-line, non-blocking message (a hotkey conflict, for instance).
     public var notice: String?
+    /// A Quick Answer that stepped aside for a VoiceFlow session, and the density it
+    /// comes back at once the island is free again.
+    public var resumeQuickAnswer: QuickAnswerPlacement?
+    /// When the current processing phase began (the progress rail's clock).
+    public var processingStartedAt: Date?
+    /// The kept transcript while the island shows the "kept for you" card.
+    public var retainedText = ""
+    /// Materials captured in the current Quick Answer round (the recording row's count).
+    public var capturedMaterials = 0
+    /// Width the current compact row needs (the product sizes its row to its controls;
+    /// the surface is never narrower than the notch plus its ears).
+    public var compactContentWidth: CGFloat = 0
     /// Task list rows sorted per PRD.
     public var visibleTasks: [AgentTask] { AgentTask.sorted(tasks) }
 
     /// A detached Quick Answer dragged close turns the resting notch into the receiver.
     public var showsReceiver: Bool { phase == .quickAnswer(.detached) && dockZone != .outside }
     /// The island's target geometry: the phase's, or the receiver while docking.
-    public var density: NotchGeometry.Density { showsReceiver ? .receiver : phase.density }
+    public var density: NotchGeometry.Density {
+        if showsReceiver { return .receiver }
+        if phase == .listening, destinationMenuOpen { return .destination }
+        return phase.density
+    }
     /// Content identity for the crossfade; the receiver has its own, shared by `near` and
     /// `ready` so brightening is never a crossfade.
     public var layoutKey: String { showsReceiver ? "dock" : phase.layoutKey }
@@ -234,6 +308,18 @@ public enum IslandEvent: Hashable, Sendable {
     case answerToken(String), answerFinished, answerFailed(String)
     case editFollowUp(String), submitFollowUp
     case detach, redock, setDockZone(DockZone), closeQuickAnswer
+    /// The expand key's second meaning: summary card ↔ attached slab.
+    case toggleQuickAnswerDensity
+    /// A second clean tap within the double-tap window: into or out of the reading density.
+    case doubleTapExpandKey
+    // Destination (conversation picker while recording a Quick Answer)
+    case toggleDestinationMenu, closeDestinationMenu
+    case destinationMove(by: Int, count: Int)
+    case destinationSearch(String)
+    case commitDestination(QuickAnswerDestinationChoice)
+    // Product rounds
+    case processingFinished(ProcessingOutcome), deliveredElapsed, dismissRetained
+    case progressNote(String), toolReturned, toolsInFlight(Bool), materialsCaptured(Int)
     // Tasks
     case tasksChanged([AgentTask]), takeMeThere(String)
     // Generic
@@ -254,6 +340,8 @@ public enum IslandEffect: Hashable, Sendable {
     case scheduleExitGrace, cancelExitGrace
     case scheduleSentGrace, cancelSentGrace
     case scheduleFailureCountdown, cancelFailureCountdown
+    /// The delivered row stays 0.55 s, as the product's does.
+    case scheduleDeliveredDismiss
     case presentDetached, dismissDetached
     case requestKey, releaseKey, focusEditor, focusFollowUp, focusSearch
     case openTask(String)

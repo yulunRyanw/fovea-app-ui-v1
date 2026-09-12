@@ -63,8 +63,14 @@ struct IslandContentTransition: ViewModifier, Animatable {
 extension AnyTransition {
     /// The island's content crossfade, on its own short ease-out.
     static var islandContent: AnyTransition {
-        .modifier(active: IslandContentTransition(progress: 0), identity: IslandContentTransition(progress: 1))
-            .animation(Tokens.Motion.animation(.islandContent).delay(Tokens.Motion.contentDelay))
+        let timing = Tokens.Motion.animation(.islandContent).delay(Tokens.Motion.contentDelay * Tokens.Motion.slowMotion)
+        // Entering content uses the custom modifier (opacity + blur + scale). Leaving content
+        // must not: a custom Animatable modifier does not interpolate on a view that is being
+        // removed here — the old content stayed at full opacity for the whole duration and then
+        // vanished — so removal is built from the primitive opacity and scale transitions.
+        return .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: Tokens.Motion.contentScale, anchor: .top)).animation(timing),
+            removal: .opacity.combined(with: .scale(scale: Tokens.Motion.contentScale, anchor: .top)).animation(timing))
     }
 }
 
